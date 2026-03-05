@@ -86,7 +86,7 @@ let unsubMemberUpdate, unsubKicked, unsubBanned
 let unsubTyping, unsubDMTyping
 let unsubForumPost, unsubForumPostEdit, unsubForumPostDelete, unsubForumMessage, unsubForumMessageEdit, unsubForumMessageDelete
 let unsubMessagePin, unsubMessageUnpin
-let unsubChannelCreate, unsubChannelDelete
+let unsubChannelCreate, unsubChannelDelete, unsubChannelReorder
 let unsubServerUpdate
 let unsubPresence
 let unsubEmbedUpdate, unsubDMEmbedUpdate
@@ -331,6 +331,11 @@ onMounted(async () => {
       }
     }
   })
+  unsubChannelReorder = on('channel_reorder', (channels, serverId) => {
+    if (serverId === serversStore.currentServer?.id) {
+      channelsStore.applyReorder(channels)
+    }
+  })
 
   // Keep own status bar in sync with backend presence changes
   unsubPresence = on('presence_update', (data) => {
@@ -382,6 +387,7 @@ onUnmounted(() => {
   unsubMessageUnpin?.()
   unsubChannelCreate?.()
   unsubChannelDelete?.()
+  unsubChannelReorder?.()
   unsubServerUpdate?.()
   unsubPresence?.()
   unsubEmbedUpdate?.()

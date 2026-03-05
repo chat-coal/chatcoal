@@ -171,6 +171,10 @@ export default {
   async deleteChannel(channelId) {
     await api.delete(`/api/channels/${channelId}`)
   },
+  async reorderChannels(serverId, channelIds) {
+    const res = await api.put(`/api/servers/${serverId}/channels/reorder`, { channel_ids: channelIds })
+    return res.data
+  },
 
   // Messages
   async getMessages(channelId, before = null) {

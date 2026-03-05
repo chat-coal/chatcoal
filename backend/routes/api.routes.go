@@ -50,6 +50,7 @@ func SetupRoutes(app *fiber.App) {
 	servers.Get("/:id/invites", controllers.GetInvites)
 	servers.Post("/:id/invites", controllers.CreateInvite)
 	servers.Delete("/:id/invites/:inviteId", controllers.DeleteInvite)
+	servers.Put("/:id/channels/reorder", controllers.ReorderChannels)
 	servers.Get("/:id/channels", controllers.GetChannels)
 	servers.Post("/:id/channels", controllers.CreateChannel)
 	servers.Get("/:id/search", middleware.PerUserRateLimiter(10, 1*time.Minute), controllers.SearchMessages)

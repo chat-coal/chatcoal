@@ -55,10 +55,29 @@ export const useChannelsStore = defineStore('channels', () => {
     }
   }
 
+  async function reorderChannels(serverId, channelIds) {
+    await api.reorderChannels(serverId, channelIds)
+  }
+
+  function applyReorder(updatedChannels) {
+    // Build a position map from the server-provided channel list
+    const posMap = new Map()
+    for (const ch of updatedChannels) {
+      posMap.set(String(ch.id), ch.position)
+    }
+    // Update positions on existing channel objects
+    for (const ch of channels.value) {
+      const pos = posMap.get(String(ch.id))
+      if (pos !== undefined) ch.position = pos
+    }
+    // Re-sort by position, then id
+    channels.value.sort((a, b) => a.position - b.position || String(a.id).localeCompare(String(b.id)))
+  }
+
   function clear() {
     channels.value = []
     currentChannel.value = null
   }
 
-  return { channels, currentChannel, loading, fetchChannels, createChannel, updateChannel, updateChannelLocal, addChannel, removeChannel, selectChannel, clear }
+  return { channels, currentChannel, loading, fetchChannels, createChannel, updateChannel, updateChannelLocal, addChannel, removeChannel, selectChannel, reorderChannels, applyReorder, clear }
 })

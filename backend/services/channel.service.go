@@ -4,6 +4,7 @@ import (
 	"chatcoal/cache"
 	"chatcoal/database"
 	"chatcoal/models"
+	"fmt"
 )
 
 func GetChannelsByServerID(serverID models.Snowflake) ([]models.Channel, error) {
@@ -64,6 +65,29 @@ func UpdateChannel(id models.Snowflake, name string, topic *string) (*models.Cha
 	}
 	cache.InvalidateServerChannels(channel.ServerID)
 	return &channel, nil
+}
+
+func ReorderChannels(serverID models.Snowflake, channelIDs []models.Snowflake) error {
+	// Validate all channel IDs belong to the server
+	var count int64
+	database.Database.Model(&models.Channel{}).Where("server_id = ? AND id IN ?", serverID, channelIDs).Count(&count)
+	if int(count) != len(channelIDs) {
+		return fmt.Errorf("one or more channel IDs do not belong to this server")
+	}
+
+	tx := database.Database.Begin()
+	for i, id := range channelIDs {
+		if err := tx.Model(&models.Channel{}).Where("id = ? AND server_id = ?", id, serverID).Update("position", i).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+
+	cache.InvalidateServerChannels(serverID)
+	return nil
 }
 
 func DeleteChannel(id models.Snowflake, serverID models.Snowflake) error {

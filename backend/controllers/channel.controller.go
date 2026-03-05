@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"chatcoal/models"
 	"chatcoal/services"
 	"chatcoal/ws"
 
@@ -125,6 +126,39 @@ func GetVoiceStates(c *fiber.Ctx) error {
 
 	states := ws.GetHub().GetVoiceStates(serverID)
 	return c.JSON(states)
+}
+
+func ReorderChannels(c *fiber.Ctx) error {
+	serverID, err := parseSnowflakeParam(c, "id")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid server ID"})
+	}
+
+	uid := c.Locals("firebaseUID").(string)
+	user, _ := services.GetUserByFirebaseUID(uid)
+	if user == nil || !services.IsServerMember(user.ID, serverID) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden"})
+	}
+
+	if !services.HasPermission(user.ID, serverID, services.PermManageChannels) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Insufficient permissions"})
+	}
+
+	var body struct {
+		ChannelIDs []models.Snowflake `json:"channel_ids" validate:"required"`
+	}
+	if err := c.BodyParser(&body); err != nil || len(body.ChannelIDs) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid body"})
+	}
+
+	if err := services.ReorderChannels(serverID, body.ChannelIDs); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	channels, _ := services.GetChannelsByServerID(serverID)
+	broadcastEvent(serverID, "channel_reorder", channels)
+
+	return c.JSON(channels)
 }
 
 func DeleteChannel(c *fiber.Ctx) error {

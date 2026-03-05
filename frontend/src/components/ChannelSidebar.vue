@@ -243,6 +243,91 @@ function formatLastMessage(dm) {
   const content = dm.last_message.content
   return content.length > 30 ? content.slice(0, 30) + '...' : content
 }
+
+// Drag-and-drop reorder
+const canManageChannels = computed(() => serversStore.canManageChannels)
+const dragState = ref(null) // { type, index }
+const dropIndex = ref(null) // insertion point: 0..length (null = none)
+
+function getGroupChannels(type) {
+  if (type === 'text') return textChannels.value
+  if (type === 'audio') return audioChannels.value
+  if (type === 'forum') return forumChannels.value
+  return []
+}
+
+function onDragStart(e, type, index) {
+  if (!canManageChannels.value) return
+  dragState.value = { type, index }
+  e.dataTransfer.effectAllowed = 'move'
+  e.dataTransfer.setData('text/plain', '') // required for Firefox
+}
+
+function onDragOver(e, type, index) {
+  if (!dragState.value || dragState.value.type !== type) return
+  e.preventDefault()
+  e.dataTransfer.dropEffect = 'move'
+  // Determine if cursor is in the top or bottom half of the element
+  const rect = e.currentTarget.getBoundingClientRect()
+  const midY = rect.top + rect.height / 2
+  dropIndex.value = e.clientY < midY ? index : index + 1
+}
+
+function onDragLeave() {
+  dropIndex.value = null
+}
+
+function onDragEnd() {
+  dragState.value = null
+  dropIndex.value = null
+}
+
+function dropToMoveIndex(fromIndex, insertionIndex) {
+  // Convert insertion point to the target index after removal
+  if (insertionIndex > fromIndex) return insertionIndex - 1
+  return insertionIndex
+}
+
+async function onDrop(e, type, index) {
+  e.preventDefault()
+  if (!dragState.value || dragState.value.type !== type) return
+
+  const fromIndex = dragState.value.index
+  // Use dropIndex (insertion point with top/bottom half detection) instead of raw item index
+  const insertAt = dropIndex.value ?? index
+  dragState.value = null
+  dropIndex.value = null
+
+  const toIndex = dropToMoveIndex(fromIndex, insertAt)
+  if (fromIndex === toIndex) return
+
+  const group = getGroupChannels(type)
+  const reordered = [...group]
+  const [moved] = reordered.splice(fromIndex, 1)
+  reordered.splice(toIndex, 0, moved)
+
+  // Optimistically apply reorder — update positions of all channels in this type group
+  const posMap = new Map()
+  reordered.forEach((ch, i) => { posMap.set(String(ch.id), i) })
+  // Update positions for channels in this group and re-sort the full list
+  for (const ch of channelsStore.channels) {
+    if (ch.type === type) {
+      ch.position = posMap.get(String(ch.id)) ?? ch.position
+    }
+  }
+  channelsStore.channels.sort((a, b) => a.position - b.position || String(a.id).localeCompare(String(b.id)))
+
+  // Build the full ordered channel ID list (all types) to send to backend
+  const allIds = channelsStore.channels.map((ch) => ch.id)
+
+  try {
+    await channelsStore.reorderChannels(serversStore.currentServer.id, allIds)
+  } catch {
+    // Revert on error by refetching
+    toastStore.add('Failed to reorder channels', 'error')
+    await channelsStore.fetchChannels(serversStore.currentServer.id)
+  }
+}
 </script>
 
 <template>
@@ -456,18 +541,26 @@ function formatLastMessage(dm) {
             </div>
 
             <div
-              v-for="channel in textChannels"
+              v-for="(channel, idx) in textChannels"
               :key="channel.id"
               class="group relative"
+              :draggable="canManageChannels"
+              @dragstart="onDragStart($event, 'text', idx)"
+              @dragover="onDragOver($event, 'text', idx)"
+              @dragleave="onDragLeave"
+              @drop="onDrop($event, 'text', idx)"
+              @dragend="onDragEnd"
             >
+              <div v-if="dragState?.type === 'text' && dropIndex === idx && dropIndex !== dragState.index && dropIndex !== dragState.index + 1" class="h-0.5 bg-[#E8521A] rounded-full mx-2 -mt-px mb-px"></div>
               <button
                 @click="selectChannel(channel)"
-                class="w-full flex items-center gap-2 px-2.5 py-[7px] rounded-lg text-sm cursor-pointer transition-all duration-150"
-                :class="
+                class="w-full flex items-center gap-2 px-2.5 py-[7px] rounded-lg text-sm transition-all duration-150"
+                :class="[
                   channelsStore.currentChannel?.id === channel.id
                     ? 'bg-[var(--sb-hover)] text-[var(--sb-text)]'
-                    : 'text-[var(--sb-text-2)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]'
-                "
+                    : 'text-[var(--sb-text-2)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]',
+                  canManageChannels ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
+                ]"
               >
                 <span v-if="channel.federation_id" class="opacity-50 shrink-0">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
@@ -532,6 +625,7 @@ function formatLastMessage(dm) {
                 </button>
               </div>
             </div>
+            <div v-if="dragState?.type === 'text' && dropIndex === textChannels.length && dropIndex !== dragState.index && dropIndex !== dragState.index + 1" class="h-0.5 bg-[#E8521A] rounded-full mx-2 mt-px"></div>
           </div>
 
           <!-- Audio Channels -->
@@ -540,15 +634,26 @@ function formatLastMessage(dm) {
               <span class="text-[var(--sb-text-3)] text-[11px] font-bold uppercase tracking-[0.1em]">Voice Channels</span>
             </div>
 
-            <div v-for="channel in audioChannels" :key="channel.id">
+            <div
+              v-for="(channel, idx) in audioChannels"
+              :key="channel.id"
+              :draggable="canManageChannels"
+              @dragstart="onDragStart($event, 'audio', idx)"
+              @dragover="onDragOver($event, 'audio', idx)"
+              @dragleave="onDragLeave"
+              @drop="onDrop($event, 'audio', idx)"
+              @dragend="onDragEnd"
+            >
+              <div v-if="dragState?.type === 'audio' && dropIndex === idx && dropIndex !== dragState.index && dropIndex !== dragState.index + 1" class="h-0.5 bg-[#E8521A] rounded-full mx-2 -mt-px mb-px"></div>
               <button
                 @click="selectChannel(channel)"
-                class="w-full flex items-center gap-2 px-2.5 py-[7px] rounded-lg text-sm cursor-pointer transition-all duration-150"
-                :class="
+                class="w-full flex items-center gap-2 px-2.5 py-[7px] rounded-lg text-sm transition-all duration-150"
+                :class="[
                   channelsStore.currentChannel?.id === channel.id
                     ? 'bg-[var(--sb-hover)] text-[var(--sb-text)]'
-                    : 'text-[var(--sb-text-2)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]'
-                "
+                    : 'text-[var(--sb-text-2)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]',
+                  canManageChannels ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
+                ]"
               >
                 <svg class="w-4 h-4 opacity-50 shrink-0" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 3a1 1 0 0 0-1 1v8a1 1 0 0 0 2 0V4a1 1 0 0 0-1-1ZM6.5 8A.5.5 0 0 0 6 8.5v3a6 6 0 0 0 5 5.91V20H8.5a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1H13v-2.59A6 6 0 0 0 18 11.5v-3a.5.5 0 0 0-1 0v3a5 5 0 0 1-10 0v-3a.5.5 0 0 0-.5-.5Z"/>
@@ -572,6 +677,7 @@ function formatLastMessage(dm) {
                 </div>
               </div>
             </div>
+            <div v-if="dragState?.type === 'audio' && dropIndex === audioChannels.length && dropIndex !== dragState.index && dropIndex !== dragState.index + 1" class="h-0.5 bg-[#E8521A] rounded-full mx-2 mt-px"></div>
           </div>
 
           <!-- Forum Channels -->
@@ -581,18 +687,26 @@ function formatLastMessage(dm) {
             </div>
 
             <div
-              v-for="channel in forumChannels"
+              v-for="(channel, idx) in forumChannels"
               :key="channel.id"
               class="group relative"
+              :draggable="canManageChannels"
+              @dragstart="onDragStart($event, 'forum', idx)"
+              @dragover="onDragOver($event, 'forum', idx)"
+              @dragleave="onDragLeave"
+              @drop="onDrop($event, 'forum', idx)"
+              @dragend="onDragEnd"
             >
+              <div v-if="dragState?.type === 'forum' && dropIndex === idx && dropIndex !== dragState.index && dropIndex !== dragState.index + 1" class="h-0.5 bg-[#E8521A] rounded-full mx-2 -mt-px mb-px"></div>
               <button
                 @click="selectChannel(channel)"
-                class="w-full flex items-center gap-2 px-2.5 py-[7px] rounded-lg text-sm cursor-pointer transition-all duration-150"
-                :class="
+                class="w-full flex items-center gap-2 px-2.5 py-[7px] rounded-lg text-sm transition-all duration-150"
+                :class="[
                   channelsStore.currentChannel?.id === channel.id
                     ? 'bg-[var(--sb-hover)] text-[var(--sb-text)]'
-                    : 'text-[var(--sb-text-2)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]'
-                "
+                    : 'text-[var(--sb-text-2)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]',
+                  canManageChannels ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
+                ]"
               >
                 <svg class="w-4 h-4 opacity-50 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M20 13V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7m16 0v1a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1m16 0h-2.586a1 1 0 0 0-.707.293l-2.414 2.414a1 1 0 0 1-.707.293h-3.172a1 1 0 0 1-.707-.293l-2.414-2.414A1 1 0 0 0 6.586 13H4" />
@@ -611,6 +725,7 @@ function formatLastMessage(dm) {
                 </svg>
               </button>
             </div>
+            <div v-if="dragState?.type === 'forum' && dropIndex === forumChannels.length && dropIndex !== dragState.index && dropIndex !== dragState.index + 1" class="h-0.5 bg-[#E8521A] rounded-full mx-2 mt-px"></div>
           </div>
         </div>
 
