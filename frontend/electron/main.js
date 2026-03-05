@@ -1,0 +1,447 @@
+import { app, BrowserWindow, session, ipcMain, shell, systemPreferences } from 'electron'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import http from 'node:http'
+import fs from 'node:fs'
+import https from 'node:https'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const isDev = !app.isPackaged
+
+let mainWindow
+let localServer = null
+
+const MIME_TYPES = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.webp': 'image/webp',
+}
+
+// Serve the production build from a local HTTP server so the app has a proper
+// http://localhost origin. This is required for Firebase signInWithPopup — the
+// auth handler popup needs to postMessage back to an HTTP(S) origin, not file://.
+function startLocalServer() {
+  const distPath = path.join(__dirname, '..', 'dist')
+  return new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      const urlPath = req.url.split('?')[0]
+      const filePath = path.join(distPath, urlPath === '/' ? 'index.html' : urlPath)
+
+      fs.readFile(filePath, (err, data) => {
+        if (err) {
+          // SPA fallback
+          fs.readFile(path.join(distPath, 'index.html'), (_, html) => {
+            res.writeHead(200, { 'Content-Type': 'text/html' })
+            res.end(html)
+          })
+          return
+        }
+        const ext = path.extname(filePath).toLowerCase()
+        res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' })
+        res.end(data)
+      })
+    })
+    server.listen(19532, 'localhost', () => resolve(server))
+  })
+}
+
+// Global push-to-talk state
+let pttKeyCode = null
+let pttEnabled = false
+let pttPressed = false
+let globalPttAvailable = false
+let uIOhookInstance = null
+let accessibilityPollInterval = null
+
+function stopGlobalPtt() {
+  if (uIOhookInstance) {
+    try { uIOhookInstance.stop() } catch {}
+    uIOhookInstance = null
+  }
+  globalPttAvailable = false
+  const canSend = mainWindow && !mainWindow.isDestroyed()
+  // If PTT key was held when permission was revoked, release it
+  if (pttPressed) {
+    pttPressed = false
+    if (canSend) mainWindow.webContents.send('ptt-state', false)
+  }
+  if (canSend) mainWindow.webContents.send('global-ptt-revoked')
+}
+
+// Start or stop the accessibility polling interval based on whether PTT
+// is enabled. The single interval handles both directions:
+//   - Hook running + permission revoked → stop hook, notify renderer
+//   - Hook not running + permission granted → start hook, notify renderer
+function updateAccessibilityPoll() {
+  if (process.platform !== 'darwin') return
+
+  if (pttEnabled && !accessibilityPollInterval) {
+    accessibilityPollInterval = setInterval(async () => {
+      const trusted = systemPreferences.isTrustedAccessibilityClient(false)
+      if (globalPttAvailable && !trusted) {
+        console.warn('Accessibility permission revoked — stopping global PTT hook')
+        stopGlobalPtt()
+      } else if (!globalPttAvailable && trusted) {
+        console.log('Accessibility permission granted — starting global PTT hook')
+        await initGlobalPtt()
+        if (globalPttAvailable && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('global-ptt-available')
+        }
+      }
+    }, 2000)
+  } else if (!pttEnabled && accessibilityPollInterval) {
+    clearInterval(accessibilityPollInterval)
+    accessibilityPollInterval = null
+  }
+}
+
+async function initGlobalPtt() {
+  // On macOS, uiohook crashes the process if accessibility is not granted.
+  // Check without prompting (false) — the prompt variant (true) can freeze
+  // the main process event loop on macOS. If not trusted, the renderer
+  // falls back to window-scoped keyboard events.
+  if (process.platform === 'darwin') {
+    const trusted = systemPreferences.isTrustedAccessibilityClient(false)
+    if (!trusted) {
+      console.warn('Global PTT unavailable: accessibility permission not granted')
+      return
+    }
+  }
+
+  try {
+    const { uIOhook } = await import('uiohook-napi')
+
+    uIOhook.on('keydown', (e) => {
+      if (!pttEnabled || e.keycode !== pttKeyCode || pttPressed) return
+      pttPressed = true
+      mainWindow?.webContents.send('ptt-state', true)
+    })
+
+    uIOhook.on('keyup', (e) => {
+      if (e.keycode !== pttKeyCode) return
+      pttPressed = false
+      if (!pttEnabled) return
+      mainWindow?.webContents.send('ptt-state', false)
+    })
+
+    uIOhook.start()
+    uIOhookInstance = uIOhook
+    globalPttAvailable = true
+
+    app.on('will-quit', () => {
+      stopGlobalPtt()
+      if (accessibilityPollInterval) {
+        clearInterval(accessibilityPollInterval)
+        accessibilityPollInterval = null
+      }
+    })
+  } catch (err) {
+    console.warn('Global keyboard hook unavailable:', err.message)
+  }
+}
+
+async function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    minWidth: 480,
+    minHeight: 400,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 12, y: 12 },
+    show: false,
+  })
+
+  // Grant microphone permissions automatically (needed for voice chat)
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    const allowed = ['media', 'mediaKeySystem', 'notifications']
+    callback(allowed.includes(permission))
+  })
+
+  // Strip Cross-Origin-Opener-Policy from Firebase auth handler responses.
+  // COOP: same-origin prevents the auth popup from calling window.close().
+  if (!isDev) {
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      if (!details.url.includes('/__/auth/')) return callback({ responseHeaders: details.responseHeaders })
+      const responseHeaders = {}
+      for (const [key, value] of Object.entries(details.responseHeaders || {})) {
+        if (key.toLowerCase() === 'cross-origin-opener-policy') continue
+        responseHeaders[key] = value
+      }
+      callback({ responseHeaders })
+    })
+  }
+
+  // Handle window.open() calls from the renderer
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Allow Firebase auth popups to open as in-app child windows
+    // (signInWithPopup / linkWithPopup open /__/auth/handler via window.open)
+    if (url.includes('/__/auth/handler')) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 500,
+          height: 700,
+          parent: mainWindow,
+          modal: true,
+          autoHideMenuBar: true,
+          webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: false,
+          },
+        },
+      }
+    }
+
+    // Open all other external links in the system browser
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      shell.openExternal(url)
+    }
+    return { action: 'deny' }
+  })
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show()
+  })
+
+  // Cmd+Shift+I to toggle DevTools (works in production too)
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.meta && input.shift && input.key === 'I') {
+      mainWindow.webContents.toggleDevTools()
+    }
+  })
+
+  if (isDev) {
+    loadDevServer()
+  } else {
+    localServer = await startLocalServer()
+    const port = localServer.address().port
+    mainWindow.loadURL(`http://localhost:${port}`)
+  }
+}
+
+async function loadDevServer() {
+  const url = 'http://localhost:5173'
+  // Wait for Vite dev server to be ready
+  const maxAttempts = 30
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      await fetch(url)
+      break
+    } catch {
+      if (i === maxAttempts - 1) {
+        console.error('Vite dev server not reachable at', url)
+        app.quit()
+        return
+      }
+      await new Promise((r) => setTimeout(r, 1000))
+    }
+  }
+  mainWindow.loadURL(url)
+}
+
+// IPC: Open URL in system browser
+ipcMain.handle('open-external', (_event, url) => {
+  shell.openExternal(url)
+})
+
+// IPC: Federation auth — opens auth URL in a child window, intercepts callback
+ipcMain.handle('federation-auth', async (_event, authUrl, callbackOrigin) => {
+  return new Promise((resolve, reject) => {
+    const authWindow = new BrowserWindow({
+      width: 600,
+      height: 700,
+      parent: mainWindow,
+      modal: true,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    })
+
+    // Intercept navigation to the callback URL
+    authWindow.webContents.on('will-navigate', (_e, navUrl) => {
+      if (navUrl.startsWith(callbackOrigin + '/federation/callback')) {
+        const url = new URL(navUrl)
+        const token = url.searchParams.get('token')
+        authWindow.close()
+        if (token) {
+          resolve(token)
+        } else {
+          reject(new Error('No token in federation callback'))
+        }
+      }
+    })
+
+    // Also intercept redirects (some auth flows use 302)
+    authWindow.webContents.on('will-redirect', (_e, navUrl) => {
+      if (navUrl.startsWith(callbackOrigin + '/federation/callback')) {
+        const url = new URL(navUrl)
+        const token = url.searchParams.get('token')
+        authWindow.close()
+        if (token) {
+          resolve(token)
+        } else {
+          reject(new Error('No token in federation callback'))
+        }
+      }
+    })
+
+    authWindow.on('closed', () => {
+      reject(new Error('Auth window closed by user'))
+    })
+
+    authWindow.loadURL(authUrl)
+  })
+})
+
+// IPC: Get app version
+ipcMain.handle('get-app-version', () => app.getVersion())
+
+// IPC: Configure global push-to-talk.
+// Lazily initialises the global keyboard hook the first time PTT is enabled.
+ipcMain.handle('set-ptt-config', async (_event, { keyCode, enabled }) => {
+  pttKeyCode = keyCode
+  pttEnabled = enabled
+  if (!enabled) pttPressed = false
+
+  // First time PTT is turned on — try to start the global hook
+  if (enabled && !globalPttAvailable) {
+    await initGlobalPtt()
+  }
+
+  // Start/stop the accessibility poll based on PTT state.
+  // When PTT is active, the poll auto-starts the hook if permission is
+  // granted mid-call, and stops it if permission is revoked.
+  updateAccessibilityPoll()
+
+  return globalPttAvailable
+})
+
+// IPC: Check if accessibility is granted (no prompt) and start hook if so
+ipcMain.handle('check-accessibility', async () => {
+  if (globalPttAvailable) return true
+  if (process.platform === 'darwin' && !systemPreferences.isTrustedAccessibilityClient(false)) {
+    return false
+  }
+  await initGlobalPtt()
+  return globalPttAvailable
+})
+
+// IPC: Prompt for macOS accessibility and retry the global hook.
+// Opens System Preferences non-blockingly so the main process never hangs.
+ipcMain.handle('request-accessibility', async () => {
+  if (globalPttAvailable) return true
+
+  if (process.platform === 'darwin' && !systemPreferences.isTrustedAccessibilityClient(false)) {
+    // Open the Accessibility pane — the user must grant permission and may
+    // need to restart the app for it to take effect.
+    shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility')
+    return false
+  }
+
+  await initGlobalPtt()
+  return globalPttAvailable
+})
+
+// IPC: Check for updates via GitHub Releases
+ipcMain.handle('check-for-updates', async () => {
+  const currentVersion = app.getVersion()
+  try {
+    const data = await new Promise((resolve, reject) => {
+      const req = https.get(
+        'https://api.github.com/repos/term-guy/chatcoal/releases/latest',
+        { headers: { 'User-Agent': `chatcoal/${currentVersion}` } },
+        (res) => {
+          let body = ''
+          res.on('data', (chunk) => { body += chunk })
+          res.on('end', () => {
+            if (res.statusCode === 200) {
+              resolve(JSON.parse(body))
+            } else {
+              reject(new Error(`GitHub API ${res.statusCode}`))
+            }
+          })
+        },
+      )
+      req.on('error', reject)
+      req.setTimeout(10000, () => { req.destroy(); reject(new Error('Timeout')) })
+    })
+
+    const latestVersion = (data.tag_name || '').replace(/^v/, '')
+    if (!latestVersion) return null
+
+    // Simple semver comparison: split into numbers, compare left to right
+    const current = currentVersion.split('.').map(Number)
+    const latest = latestVersion.split('.').map(Number)
+    let isNewer = false
+    for (let i = 0; i < 3; i++) {
+      if ((latest[i] || 0) > (current[i] || 0)) { isNewer = true; break }
+      if ((latest[i] || 0) < (current[i] || 0)) break
+    }
+
+    if (!isNewer) return null
+
+    // Find a suitable download asset for this platform
+    const platform = process.platform
+    const arch = process.arch
+    const assets = data.assets || []
+    let downloadUrl = data.html_url // fallback to release page
+
+    for (const asset of assets) {
+      const name = asset.name.toLowerCase()
+      if (platform === 'darwin' && name.endsWith('.dmg') && name.includes(arch)) {
+        downloadUrl = asset.browser_download_url
+        break
+      } else if (platform === 'win32' && name.endsWith('.exe')) {
+        downloadUrl = asset.browser_download_url
+        break
+      } else if (platform === 'linux' && name.endsWith('.appimage')) {
+        downloadUrl = asset.browser_download_url
+        break
+      }
+    }
+
+    return { currentVersion, latestVersion, downloadUrl }
+  } catch {
+    return null
+  }
+})
+
+// Register protocol for deep linking (future use)
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('chatcoal', process.execPath, [path.resolve(process.argv[1])])
+  }
+} else {
+  app.setAsDefaultProtocolClient('chatcoal')
+}
+
+app.whenReady().then(async () => {
+  await createWindow()
+})
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    localServer?.close()
+    app.quit()
+  }
+})
+
+app.on('activate', async () => {
+  if (BrowserWindow.getAllWindows().length === 0) await createWindow()
+})

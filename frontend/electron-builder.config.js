@@ -1,0 +1,31 @@
+/**
+ * @type {import('electron-builder').Configuration}
+ */
+export default {
+  appId: 'com.chatcoal.app',
+  productName: 'chatcoal',
+  directories: {
+    output: 'release',
+  },
+  files: [
+    'dist/**/*',
+    'electron/**/*',
+  ],
+  asarUnpack: [
+    '**/node_modules/uiohook-napi/**',
+  ],
+  mac: {
+    target: ['dmg'],
+    category: 'public.app-category.social-networking',
+    icon: 'build/icon.icns',
+  },
+  win: {
+    target: ['nsis'],
+    icon: 'build/icon.icns',
+  },
+  linux: {
+    target: ['AppImage'],
+    category: 'Network;Chat',
+    icon: 'build/icon.icns',
+  },
+}

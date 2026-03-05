@@ -1,0 +1,8 @@
+.DS_Store
+.env
+.env.production
+*.pem
+*.key
+firebase-service-account.json
+docker-compose.yml
+livekit.yaml

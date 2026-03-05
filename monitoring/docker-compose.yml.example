@@ -1,0 +1,13 @@
+services:
+  monitoring:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${PORT:-9091}:9091"
+    environment:
+      CHATCOAL_METRICS_URL: ${CHATCOAL_METRICS_URL:-http://host.docker.internal:3000/internal/metrics}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      PORT: "9091"
+      POLL_INTERVAL: ${POLL_INTERVAL:-5}

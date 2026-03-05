@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --ember: #E8521A;
+    --ember-dim: #D4782A;
+    --ember-glow: #FF6B35;
+    --coal-950: #070707;
+    --coal-900: #0D0D0D;
+    --coal-800: #141414;
+    --coal-700: #1C1C1C;
+    --coal-600: #252525;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: 'Manrope', sans-serif;
+    background-color: #0D0D0D;
+    color: #E8E6E1;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background-color: #E8521A44;
+    color: #fff;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #0D0D0D;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #E8521A88;
+  }
+}
+
+@layer utilities {
+  .text-gradient-ember {
+    background: linear-gradient(135deg, #FF6B35 0%, #E8521A 50%, #D4782A 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .glow-ember {
+    box-shadow: 0 0 30px #E8521A44, 0 0 60px #E8521A22;
+  }
+
+  .glow-ember-strong {
+    box-shadow: 0 0 40px #E8521A66, 0 0 80px #E8521A33;
+  }
+
+  .border-ember-subtle {
+    border-color: #E8521A33;
+  }
+
+  .noise-overlay::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1;
+  }
+}
+
+/* Ember particle animations */
+@keyframes particleRise {
+  0% {
+    transform: translateY(0) translateX(0) scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translateY(-60px) translateX(10px) scale(0.7);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateY(-120px) translateX(-5px) scale(0.3);
+    opacity: 0;
+  }
+}
+
+.particle {
+  animation: particleRise linear infinite;
+}

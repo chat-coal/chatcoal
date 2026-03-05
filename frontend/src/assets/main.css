@@ -1,0 +1,236 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════
+   CHATCOAL THEME TOKENS
+   Coal-black sidebar · Ember red-orange accents
+   Light (default) + Dark (auto via prefers-color-scheme)
+   ═══════════════════════════════════════════ */
+
+:root {
+  /* ─── Sidebar (always coal-dark) ─── */
+  --sb-bg: #0D0C0B;
+  --sb-bg-2: #141210;
+  --sb-hover: #222018;
+  --sb-border: #252320;
+  --sb-text: #F0EDE6;
+  --sb-text-2: #8C8880;
+  --sb-text-3: #4E4B46;
+
+  /* ─── Surface (light) ─── */
+  --surface: #FAF9F7;
+  --surface-2: #F2F0EB;
+  --surface-3: #EDEBE5;
+  --surface-border: #E5E2DB;
+  --card: #FFFFFF;
+
+  /* ─── Text (light) ─── */
+  --text-1: #1C1917;
+  --text-2: #3D3833;
+  --text-3: #78716C;
+  --text-4: #A8A29B;
+  --text-disabled: #D5D0C8;
+
+  /* ─── Status ─── */
+  --offline: #C4BFB8;
+
+  /* ─── Modal / Overlay ─── */
+  --backdrop: rgba(0, 0, 0, 0.4);
+  --modal-bg: #FFFFFF;
+  --modal-border: rgba(229, 226, 219, 0.5);
+
+  /* ─── Scrollbar ─── */
+  --scroll-sb: #252320;
+  --scroll-sb-h: #302D28;
+  --scroll-main: #D5D0C8;
+  --scroll-main-h: #B5B0A8;
+
+  /* ─── Login-specific ─── */
+  --login-bg: #0D0C0B;
+  --login-form-bg: #FAF9F7;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* ─── Sidebar (coal black) ─── */
+    --sb-bg: #080807;
+    --sb-bg-2: #0D0D0B;
+    --sb-hover: #1A1A17;
+    --sb-border: #1E1E1B;
+
+    /* ─── Surface (charcoal) ─── */
+    --surface: #111110;
+    --surface-2: #181816;
+    --surface-3: #1F1F1C;
+    --surface-border: #272724;
+    --card: #181816;
+
+    /* ─── Text ─── */
+    --text-1: #F0EDE6;
+    --text-2: #C8C4BC;
+    --text-3: #7C7970;
+    --text-4: #4E4B46;
+    --text-disabled: #2E2B27;
+
+    /* ─── Status ─── */
+    --offline: #3A3733;
+
+    /* ─── Modal / Overlay ─── */
+    --backdrop: rgba(0, 0, 0, 0.78);
+    --modal-bg: #161614;
+    --modal-border: rgba(30, 30, 27, 0.7);
+
+    /* ─── Scrollbar ─── */
+    --scroll-sb: #1A1A17;
+    --scroll-sb-h: #242420;
+    --scroll-main: #242420;
+    --scroll-main-h: #2E2B27;
+
+    /* ─── Login-specific ─── */
+    --login-bg: #060605;
+    --login-form-bg: #111110;
+  }
+}
+
+/* ─── Scrollbar: dark variant (sidebar) ─── */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 5px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--scroll-sb);
+  border-radius: 3px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-sb-h);
+}
+
+/* ─── Scrollbar: main area variant ─── */
+.scrollbar-light::-webkit-scrollbar {
+  width: 5px;
+}
+.scrollbar-light::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-light::-webkit-scrollbar-thumb {
+  background: var(--scroll-main);
+  border-radius: 3px;
+}
+.scrollbar-light::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-main-h);
+}
+
+/* ─── Scrollbar: hidden ─── */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ─── Typography ─── */
+body {
+  font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--surface);
+  color: var(--text-1);
+}
+
+.font-display {
+  font-family: 'Syne', system-ui, sans-serif;
+  font-weight: 700;
+}
+
+/* ─── Noise texture for dark surfaces ─── */
+.noise-texture {
+  position: relative;
+}
+.noise-texture::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 200px 200px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── Focus ring ─── */
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid #E8521A;
+  outline-offset: -1px;
+  border-color: transparent;
+}
+
+/* ─── Animations ─── */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ember-pulse {
+  0%, 100% { opacity: 0.12; transform: scale(1); }
+  50% { opacity: 0.22; transform: scale(1.05); }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.4s ease-out both;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out both;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out both;
+}
+
+.animate-ember-pulse {
+  animation: ember-pulse 4s ease-in-out infinite;
+}
+
+/* Stagger children */
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 50ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 100ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 150ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 200ms; }
+
+/* ─── Selection color ─── */
+::selection {
+  background: rgba(232, 82, 26, 0.25);
+  color: inherit;
+}

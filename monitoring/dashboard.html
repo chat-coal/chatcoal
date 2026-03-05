@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>chatcoal Monitoring</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Syne:wght@600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1013;
+    --surface: #17191e;
+    --surface-2: #1e2027;
+    --border: #2a2d36;
+    --text-1: #f0f0f2;
+    --text-2: #9a9db0;
+    --text-3: #5e6176;
+    --accent: #E8521A;
+    --accent-dim: rgba(232,82,26,0.15);
+    --green: #3ecf8e;
+    --red: #e84c4c;
+    --blue: #5b9ef8;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text-1);
+    font-family: 'Manrope', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-1);
+  }
+  .header-meta {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .health-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--text-3);
+    display: inline-block;
+    margin-right: 4px;
+    transition: background 0.3s;
+  }
+  .health-dot.up { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .health-dot.down { background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+  main { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+
+  .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .stat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); margin-bottom: 8px; }
+  .stat-value { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 700; color: var(--text-1); }
+  .stat-sub { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+  .stat-card.accent { border-color: var(--accent-dim); }
+  .stat-card.accent .stat-value { color: var(--accent); }
+
+  .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .panel.full { grid-column: 1 / -1; }
+  .panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-3);
+    margin-bottom: 16px;
+  }
+  canvas { width: 100% !important; }
+
+  .cache-bars { display: flex; flex-direction: column; gap: 10px; }
+  .cache-bar-row { display: flex; flex-direction: column; gap: 4px; }
+  .cache-bar-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-2); }
+  .cache-bar-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .cache-bar-fill { height: 100%; border-radius: 3px; background: var(--accent); transition: width 0.4s ease; }
+
+  @media (max-width: 768px) {
+    .stat-row, .chart-row { grid-template-columns: 1fr; }
+    .panel.full { grid-column: 1; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>chatcoal Monitoring</h1>
+  <div class="header-meta">
+    <span id="backend-url"></span>
+    <span><span class="health-dot" id="health-dot"></span><span id="health-label">—</span></span>
+    <span id="last-updated"></span>
+  </div>
+</header>
+<main>
+  <div class="stat-row">
+    <div class="stat-card accent">
+      <div class="stat-label">Active WS Connections</div>
+      <div class="stat-value" id="stat-connections">—</div>
+      <div class="stat-sub">live gauge</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Rejected / min</div>
+      <div class="stat-value" id="stat-rejected">—</div>
+      <div class="stat-sub">rate from history</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Dropped Tasks / min</div>
+      <div class="stat-value" id="stat-dropped">—</div>
+      <div class="stat-sub">rate from history</div>
+    </div>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat-card">
+      <div class="stat-label">Total Servers</div>
+      <div class="stat-value" id="stat-servers">—</div>
+      <div class="stat-sub">all servers</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Channels</div>
+      <div class="stat-value" id="stat-channels">—</div>
+      <div class="stat-sub">all channels</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Active Voice</div>
+      <div class="stat-value" id="stat-voice">—</div>
+      <div class="stat-sub" id="stat-voice-sub">channels / users</div>
+    </div>
+  </div>
+
+  <div class="panel full">
+    <div class="panel-title">WS Connection Count — last 30 samples</div>
+    <canvas id="ws-chart" height="80"></canvas>
+  </div>
+
+  <div class="chart-row">
+    <div class="panel">
+      <div class="panel-title">Cache Hit Rates</div>
+      <div class="cache-bars" id="cache-bars">
+        <div class="cache-bar-row" data-key="user">
+          <div class="cache-bar-label"><span>User</span><span class="pct">—</span></div>
+          <div class="cache-bar-track"><div class="cache-bar-fill" style="width:0%"></div></div>
+        </div>
+        <div class="cache-bar-row" data-key="member">
+          <div class="cache-bar-label"><span>Member</span><span class="pct">—</span></div>
+          <div class="cache-bar-track"><div class="cache-bar-fill" style="width:0%"></div></div>
+        </div>
+        <div class="cache-bar-row" data-key="user_servers">
+          <div class="cache-bar-label"><span>User Servers</span><span class="pct">—</span></div>
+          <div class="cache-bar-track"><div class="cache-bar-fill" style="width:0%"></div></div>
+        </div>
+        <div class="cache-bar-row" data-key="server_channels">
+          <div class="cache-bar-label"><span>Server Channels</span><span class="pct">—</span></div>
+          <div class="cache-bar-track"><div class="cache-bar-fill" style="width:0%"></div></div>
+        </div>
+        <div class="cache-bar-row" data-key="presigned">
+          <div class="cache-bar-label"><span>Presigned URLs</span><span class="pct">—</span></div>
+          <div class="cache-bar-track"><div class="cache-bar-fill" style="width:0%"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Shard Queue Depths (16 shards)</div>
+      <canvas id="shard-chart" height="160"></canvas>
+    </div>
+  </div>
+</main>
+
+<script>
+const chartDefaults = {
+  animation: false,
+  responsive: true,
+  plugins: { legend: { display: false }, tooltip: {
+    backgroundColor: '#1e2027',
+    borderColor: '#2a2d36',
+    borderWidth: 1,
+    titleColor: '#9a9db0',
+    bodyColor: '#f0f0f2',
+  }},
+  scales: {
+    x: { grid: { color: '#2a2d36' }, ticks: { color: '#5e6176', maxTicksLimit: 8 } },
+    y: { grid: { color: '#2a2d36' }, ticks: { color: '#5e6176' }, beginAtZero: true },
+  },
+};
+
+const wsCtx = document.getElementById('ws-chart').getContext('2d');
+const wsChart = new Chart(wsCtx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      data: [],
+      borderColor: '#E8521A',
+      backgroundColor: 'rgba(232,82,26,0.08)',
+      borderWidth: 2,
+      pointRadius: 0,
+      fill: true,
+      tension: 0.3,
+    }]
+  },
+  options: { ...chartDefaults },
+});
+
+const shardCtx = document.getElementById('shard-chart').getContext('2d');
+const shardChart = new Chart(shardCtx, {
+  type: 'bar',
+  data: {
+    labels: Array.from({length: 16}, (_, i) => `S${i}`),
+    datasets: [{
+      data: Array(16).fill(0),
+      backgroundColor: 'rgba(91,158,248,0.7)',
+      borderRadius: 3,
+    }]
+  },
+  options: {
+    ...chartDefaults,
+    scales: {
+      x: { grid: { color: '#2a2d36' }, ticks: { color: '#5e6176' } },
+      y: { grid: { color: '#2a2d36' }, ticks: { color: '#5e6176' }, beginAtZero: true },
+    },
+  },
+});
+
+function fmtTime(ms) {
+  const d = new Date(ms);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function computeRate(history, field) {
+  if (history.length < 2) return '—';
+  const first = history[0];
+  const last = history[history.length - 1];
+  const dt = (last.ts - first.ts) / 60000; // minutes
+  if (dt <= 0) return '—';
+  const dv = last.snapshot[field] - first.snapshot[field];
+  return (dv / dt).toFixed(1) + '/min';
+}
+
+function hitRate(hits, misses) {
+  const total = hits + misses;
+  if (total === 0) return null;
+  return hits / total;
+}
+
+async function refresh() {
+  try {
+    const res = await fetch('/api/data');
+    const { history, healthy } = await res.json();
+
+    // Health indicator
+    const dot = document.getElementById('health-dot');
+    const label = document.getElementById('health-label');
+    dot.className = 'health-dot ' + (healthy ? 'up' : 'down');
+    label.textContent = healthy ? 'Up' : 'Down';
+
+    document.getElementById('last-updated').textContent =
+      'Updated ' + new Date().toLocaleTimeString();
+
+    if (!history || history.length === 0) return;
+
+    const latest = history[history.length - 1].snapshot;
+
+    // Stat cards
+    document.getElementById('stat-connections').textContent =
+      latest.ws_connections.toLocaleString();
+    document.getElementById('stat-rejected').textContent =
+      computeRate(history, 'ws_connections_rejected_total');
+    document.getElementById('stat-dropped').textContent =
+      computeRate(history, 'ws_dropped_tasks_total');
+
+    // Platform stats
+    document.getElementById('stat-servers').textContent =
+      (latest.platform?.total_servers ?? 0).toLocaleString();
+    document.getElementById('stat-channels').textContent =
+      (latest.platform?.total_channels ?? 0).toLocaleString();
+
+    // Voice stats
+    const voiceCh = latest.voice?.active_channels ?? 0;
+    const voiceUsers = latest.voice?.active_users ?? 0;
+    document.getElementById('stat-voice').textContent = voiceUsers.toLocaleString();
+    document.getElementById('stat-voice-sub').textContent =
+      voiceCh + ' channel' + (voiceCh !== 1 ? 's' : '') + ' active';
+
+    // WS line chart — last 30 points
+    const slice = history.slice(-30);
+    wsChart.data.labels = slice.map(e => fmtTime(e.ts));
+    wsChart.data.datasets[0].data = slice.map(e => e.snapshot.ws_connections);
+    wsChart.update('none');
+
+    // Shard bar chart
+    if (latest.ws_shard_queue_depths && latest.ws_shard_queue_depths.length === 16) {
+      shardChart.data.datasets[0].data = latest.ws_shard_queue_depths;
+      shardChart.update('none');
+    }
+
+    // Cache hit rate bars
+    const cacheKeys = ['user', 'member', 'user_servers', 'server_channels', 'presigned'];
+    cacheKeys.forEach(key => {
+      const row = document.querySelector(`.cache-bar-row[data-key="${key}"]`);
+      if (!row) return;
+      const h = latest.cache_hits[key] || 0;
+      const m = latest.cache_misses[key] || 0;
+      const rate = hitRate(h, m);
+      const pct = rate !== null ? (rate * 100).toFixed(1) + '%' : 'n/a';
+      row.querySelector('.pct').textContent = pct;
+      row.querySelector('.cache-bar-fill').style.width = rate !== null ? (rate * 100) + '%' : '0%';
+    });
+
+  } catch (e) {
+    const dot = document.getElementById('health-dot');
+    dot.className = 'health-dot down';
+    document.getElementById('health-label').textContent = 'Error';
+  }
+}
+
+// Show backend URL
+document.getElementById('backend-url').textContent =
+  window.location.host === '' ? 'localhost:9091' : window.location.host;
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+# LiveKit Server Configuration
+# The API key and secret here must match LIVEKIT_API_KEY / LIVEKIT_API_SECRET in .env
+keys:
+  devkey: secret
+
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50100
+  use_external_ip: true
