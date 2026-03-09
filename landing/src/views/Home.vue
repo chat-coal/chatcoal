@@ -4,6 +4,7 @@
     <LandingHero />
     <LandingFeatures />
     <LandingBuiltDifferent />
+    <LandingRoadmap />
     <LandingCTA />
     <LandingFooter />
   </div>
@@ -14,6 +15,7 @@ import LandingNav from '../components/LandingNav.vue'
 import LandingHero from '../components/LandingHero.vue'
 import LandingFeatures from '../components/LandingFeatures.vue'
 import LandingBuiltDifferent from '../components/LandingBuiltDifferent.vue'
+import LandingRoadmap from '../components/LandingRoadmap.vue'
 import LandingCTA from '../components/LandingCTA.vue'
 import LandingFooter from '../components/LandingFooter.vue'
 </script>
