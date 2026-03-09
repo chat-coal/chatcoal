@@ -93,7 +93,11 @@ export function usePushToTalk() {
     async function syncPttConfig() {
       const enabled = voiceStore.inputMode === 'push_to_talk' && !!voiceStore.currentVoiceChannelId
       const keyCode = CODE_TO_UIOHOOK[voiceStore.pttKey] ?? null
-      const available = await window.electronAPI.setPttConfig({ keyCode, enabled })
+      const available = await window.electronAPI.setPttConfig({
+        keyCode,
+        webKeyCode: voiceStore.pttKey,
+        enabled,
+      })
       globalPttActive = available
       voiceStore.globalPttAvailable = available
     }

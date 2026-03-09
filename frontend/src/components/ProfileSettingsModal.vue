@@ -41,6 +41,8 @@ let checkTimer = null
 const recordingPttKey = ref(false)
 const isElectron = !!window.electronAPI?.isElectron
 const isMac = window.electronAPI?.platform === 'darwin'
+const isLinux = window.electronAPI?.platform === 'linux'
+const isWayland = !!window.electronAPI?.isWayland
 const requestingAccess = ref(false)
 
 async function requestAccessibility() {
@@ -436,7 +438,7 @@ async function save() {
           </button>
         </div>
 
-        <!-- Accessibility permission banner (Electron + PTT mode + no global hook) -->
+        <!-- macOS: Accessibility permission banner -->
         <div v-if="voiceStore.inputMode === 'push_to_talk' && isMac && !voiceStore.globalPttAvailable" class="mb-6 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3.5">
           <div class="flex items-start gap-3">
             <svg class="w-5 h-5 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -460,6 +462,26 @@ async function save() {
             </div>
           </div>
         </div>
+
+        <!-- Linux/Wayland: input group banner -->
+        <div v-else-if="voiceStore.inputMode === 'push_to_talk' && isLinux && isWayland && !voiceStore.globalPttAvailable" class="mb-6 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3.5">
+          <div class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+            </svg>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold text-amber-300 mb-1">System-wide PTT unavailable</p>
+              <p class="text-xs text-[var(--text-3)] leading-relaxed mb-2.5">
+                On Wayland, system-wide PTT requires your user to be in the <span class="text-[var(--text-2)] font-medium">input</span> group so chatcoal can read keyboard events in the background. Without it, PTT only works while the window is focused.
+              </p>
+              <p class="text-xs text-[var(--text-4)] leading-relaxed mb-1">
+                Run this in a terminal, then <span class="text-[var(--text-2)] font-medium">log out and back in</span>:
+              </p>
+              <code class="block text-xs bg-[var(--surface)] text-[var(--text-2)] rounded-lg px-3 py-2 mb-1 font-mono select-all">sudo usermod -aG input $USER</code>
+            </div>
+          </div>
+        </div>
+
         <div v-else-if="voiceStore.inputMode !== 'push_to_talk'" class="mb-2"></div>
         <div v-else class="mb-6"></div>
         </div>

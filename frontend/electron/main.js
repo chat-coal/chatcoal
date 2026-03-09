@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import http from 'node:http'
 import fs from 'node:fs'
 import https from 'node:https'
+import { isWayland, initPortalPtt, stopPortalPtt } from './portal-ptt.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
@@ -57,17 +58,23 @@ function startLocalServer() {
 
 // Global push-to-talk state
 let pttKeyCode = null
+let pttWebKeyCode = null
 let pttEnabled = false
 let pttPressed = false
 let globalPttAvailable = false
+let pttBackend = null // 'portal' | 'uiohook' | null
 let uIOhookInstance = null
 let accessibilityPollInterval = null
 
 function stopGlobalPtt() {
+  if (pttBackend === 'portal') {
+    stopPortalPtt()
+  }
   if (uIOhookInstance) {
     try { uIOhookInstance.stop() } catch {}
     uIOhookInstance = null
   }
+  pttBackend = null
   globalPttAvailable = false
   const canSend = mainWindow && !mainWindow.isDestroyed()
   // If PTT key was held when permission was revoked, release it
@@ -106,6 +113,49 @@ function updateAccessibilityPoll() {
 }
 
 async function initGlobalPtt() {
+  // On Linux/Wayland, try the XDG GlobalShortcuts portal first.
+  // This is the compositor-native approach and doesn't need /dev/input access.
+  if (isWayland() && pttWebKeyCode) {
+    const ok = await initPortalPtt({
+      webKeyCode: pttWebKeyCode,
+      onPress() {
+        if (!pttEnabled || pttPressed) return
+        pttPressed = true
+        mainWindow?.webContents.send('ptt-state', true)
+      },
+      onRelease() {
+        pttPressed = false
+        if (!pttEnabled) return
+        mainWindow?.webContents.send('ptt-state', false)
+      },
+      onDisconnect() {
+        // Portal lost (e.g. compositor restart) — notify renderer to fall
+        // back to browser-level PTT until the portal is re-established.
+        pttBackend = null
+        globalPttAvailable = false
+        const canSend = mainWindow && !mainWindow.isDestroyed()
+        if (pttPressed) {
+          pttPressed = false
+          if (canSend) mainWindow.webContents.send('ptt-state', false)
+        }
+        if (canSend) mainWindow.webContents.send('global-ptt-revoked')
+      },
+    })
+    if (ok) {
+      pttBackend = 'portal'
+      globalPttAvailable = true
+      app.on('will-quit', () => {
+        stopGlobalPtt()
+        if (accessibilityPollInterval) {
+          clearInterval(accessibilityPollInterval)
+          accessibilityPollInterval = null
+        }
+      })
+      return
+    }
+    console.log('Portal unavailable, falling back to uiohook-napi')
+  }
+
   // On macOS, uiohook crashes the process if accessibility is not granted.
   // Check without prompting (false) — the prompt variant (true) can freeze
   // the main process event loop on macOS. If not trusted, the renderer
@@ -136,6 +186,7 @@ async function initGlobalPtt() {
 
     uIOhook.start()
     uIOhookInstance = uIOhook
+    pttBackend = 'uiohook'
     globalPttAvailable = true
 
     app.on('will-quit', () => {
@@ -161,8 +212,9 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 12, y: 12 },
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 12, y: 12 } }
+      : { frame: false }),
     show: false,
   })
 
@@ -254,6 +306,14 @@ async function loadDevServer() {
   mainWindow.loadURL(url)
 }
 
+// IPC: Window controls (frameless Windows)
+ipcMain.handle('window-minimize', () => mainWindow?.minimize())
+ipcMain.handle('window-maximize', () => {
+  if (mainWindow?.isMaximized()) mainWindow.unmaximize()
+  else mainWindow?.maximize()
+})
+ipcMain.handle('window-close', () => mainWindow?.close())
+
 // IPC: Open URL in system browser
 ipcMain.handle('open-external', (_event, url) => {
   shell.openExternal(url)
@@ -314,12 +374,20 @@ ipcMain.handle('get-app-version', () => app.getVersion())
 
 // IPC: Configure global push-to-talk.
 // Lazily initialises the global keyboard hook the first time PTT is enabled.
-ipcMain.handle('set-ptt-config', async (_event, { keyCode, enabled }) => {
+ipcMain.handle('set-ptt-config', async (_event, { keyCode, webKeyCode, enabled }) => {
+  const keyChanged = pttWebKeyCode !== webKeyCode
   pttKeyCode = keyCode
+  pttWebKeyCode = webKeyCode
   pttEnabled = enabled
   if (!enabled) pttPressed = false
 
-  // First time PTT is turned on — try to start the global hook
+  // KDE persists shortcut bindings globally by ID — tear down the portal
+  // session whenever the key changes so a fresh session picks up the new key.
+  if (keyChanged && pttBackend === 'portal') {
+    stopGlobalPtt()
+  }
+
+  // Start the global hook (first time, or after teardown above)
   if (enabled && !globalPttAvailable) {
     await initGlobalPtt()
   }

@@ -3,6 +3,14 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
   platform: process.platform,
+  linuxDesktop: process.platform === 'linux'
+    ? (process.env.XDG_CURRENT_DESKTOP || process.env.DESKTOP_SESSION || '').toLowerCase()
+    : null,
+  isWayland: process.platform === 'linux' &&
+    !!(process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland'),
+  windowMinimize: () => ipcRenderer.invoke('window-minimize'),
+  windowMaximize: () => ipcRenderer.invoke('window-maximize'),
+  windowClose: () => ipcRenderer.invoke('window-close'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   federationAuth: (authUrl, callbackOrigin) =>
     ipcRenderer.invoke('federation-auth', authUrl, callbackOrigin),

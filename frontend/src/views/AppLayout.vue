@@ -435,6 +435,12 @@ watch(
       if (channel.type === 'forum') {
         // Forum channels load posts, not messages
         await forumStore.fetchPosts(channel.id)
+        // Mark as read
+        if (serversStore.currentServer && forumStore.posts.length > 0) {
+          const latestPost = forumStore.posts[0]
+          unreadStore.markChannelRead(channel.id, serversStore.currentServer.id)
+          api.markChannelAsRead(channel.id, latestPost.id).catch(() => {})
+        }
       } else {
         await messagesStore.fetchMessages(channel.id)
         // Mark as read
