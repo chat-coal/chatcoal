@@ -30,8 +30,9 @@ export function useVersionCheck() {
   function handleUpdateStatus(data) {
     if (data.status === 'available') {
       updateAvailable.value = true
-      electronUpdate.value = { version: data.version, status: 'downloading', percent: 0 }
+      electronUpdate.value = { version: data.version, status: 'available', percent: 0 }
     } else if (data.status === 'downloading') {
+      if (electronUpdate.value) electronUpdate.value.status = 'downloading'
       if (electronUpdate.value) electronUpdate.value.percent = data.percent
     } else if (data.status === 'ready') {
       if (electronUpdate.value) {
@@ -83,6 +84,11 @@ export function useVersionCheck() {
     window.location.reload()
   }
 
+  function downloadUpdate() {
+    if (electronUpdate.value) electronUpdate.value.status = 'downloading'
+    window.electronAPI.downloadUpdate()
+  }
+
   function installUpdate() {
     window.electronAPI.installUpdate()
   }
@@ -92,5 +98,5 @@ export function useVersionCheck() {
     electronUpdate.value = null
   }
 
-  return { updateAvailable, electronUpdate, reloading, reload, installUpdate, dismissUpdate }
+  return { updateAvailable, electronUpdate, reloading, reload, downloadUpdate, installUpdate, dismissUpdate }
 }

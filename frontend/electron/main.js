@@ -446,7 +446,7 @@ ipcMain.handle('request-accessibility', async () => {
 })
 
 // --- Auto-updater (electron-updater) ---
-autoUpdater.autoDownload = true
+autoUpdater.autoDownload = false
 autoUpdater.autoInstallOnAppQuit = true
 autoUpdater.logger = null // silence default logging
 
@@ -478,8 +478,15 @@ ipcMain.handle('check-for-updates', () => {
   autoUpdater.checkForUpdates().catch(() => {})
 })
 
+ipcMain.handle('download-update', () => {
+  autoUpdater.downloadUpdate().catch(() => {})
+})
+
 ipcMain.handle('install-update', () => {
-  autoUpdater.quitAndInstall(false, true)
+  // Disable autoInstallOnAppQuit so the explicit quitAndInstall takes
+  // full control and macOS doesn't silently swallow the restart.
+  autoUpdater.autoInstallOnAppQuit = false
+  setImmediate(() => autoUpdater.quitAndInstall(false, true))
 })
 
 // Register protocol for deep linking (future use)
