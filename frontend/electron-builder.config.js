@@ -18,6 +18,7 @@ export default {
     provider: 'github',
     owner: 'chat-coal',
     repo: 'chatcoal',
+    releaseType: 'release',
   },
   mac: {
     target: ['dmg', 'zip'],
