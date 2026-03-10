@@ -296,6 +296,11 @@ watch(
         const lastMsg = messagesStore.messages[messagesStore.messages.length - 1]
         try { await api.markChannelAsRead(channel.id, lastMsg.id) } catch {}
       }
+      // Load pinned message IDs so messages show pin indicator
+      try {
+        const pins = await api.getPinnedMessages(channel.id)
+        pinnedMessageIds.value = new Set(pins.map((p) => p.message_id))
+      } catch {}
     }
   },
 )

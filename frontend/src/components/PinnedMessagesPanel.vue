@@ -1,9 +1,11 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useServersStore } from '@/stores/servers'
 import { useToastStore } from '@/stores/toast'
 import api, { API_URL } from '@/services/api.service'
 import { getAvatarColor, getDefaultAvatarStyle, resolveFileUrl, cssBackgroundUrl } from '@/utils/avatar'
+import { linkify } from '@/utils/linkify'
+import LinkEmbedCard from './LinkEmbedCard.vue'
 
 const props = defineProps({
   channelId: { type: String, required: true },
@@ -39,6 +41,34 @@ const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
 function isImage(url) {
   if (!url) return false
   return imageExts.some((ext) => url.toLowerCase().endsWith(ext))
+}
+
+const giphyUrlPattern = /^https?:\/\/media[0-9]*\.giphy\.com\/media\/[^\s]+\.gif(\?[^\s]*)?$/
+
+function isGifMessage(msg) {
+  const c = msg?.content?.trim()
+  if (!c) return false
+  return giphyUrlPattern.test(c)
+}
+
+function gifContainerStyle(msg) {
+  const w = msg.image_width
+  const h = msg.image_height
+  if (!w || !h) return {}
+  return {
+    width: Math.min(w, 280) + 'px',
+    maxWidth: '100%',
+    aspectRatio: w + ' / ' + h,
+    maxHeight: '150px',
+  }
+}
+
+function getEmbeds(msg) {
+  if (!msg?.embeds) return []
+  if (typeof msg.embeds === 'string') {
+    try { return JSON.parse(msg.embeds) } catch { return [] }
+  }
+  return msg.embeds
 }
 
 async function unpinMessage(pin) {
@@ -127,9 +157,39 @@ defineExpose({ addPin, removePin })
             <span class="text-[var(--text-4)] text-[10px] shrink-0">{{ formatTime(pin.message?.created_at) }}</span>
           </div>
 
-          <!-- Content -->
-          <p v-if="pin.message?.content" class="text-[var(--text-2)] text-xs leading-relaxed break-words mb-2">
-            {{ pin.message.content }}
+          <!-- Content: inline GIF -->
+          <div v-if="isGifMessage(pin.message)" class="mb-2">
+            <div
+              v-if="pin.message.image_width && pin.message.image_height"
+              :style="gifContainerStyle(pin.message)"
+              class="rounded-lg overflow-hidden bg-[var(--surface-3)]"
+            >
+              <img
+                :src="pin.message.content.trim()"
+                alt="GIF"
+                class="w-full h-full object-cover"
+              />
+            </div>
+            <img
+              v-else
+              :src="pin.message.content.trim()"
+              alt="GIF"
+              class="max-w-full max-h-[150px] rounded-lg object-cover"
+            />
+          </div>
+
+          <!-- Content: linkified text -->
+          <p v-else-if="pin.message?.content" class="text-[var(--text-2)] text-xs leading-relaxed break-words mb-2">
+            <template v-for="(part, i) in linkify(pin.message.content)" :key="i">
+              <a
+                v-if="part.type === 'link'"
+                :href="part.value"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-[#E8521A] hover:underline break-all"
+              >{{ part.value }}</a>
+              <template v-else>{{ part.value }}</template>
+            </template>
           </p>
 
           <!-- Image attachment -->
@@ -138,7 +198,7 @@ defineExpose({ addPin, removePin })
               v-if="pin.message.image_width && pin.message.image_height"
               :style="{
                 width: Math.min(pin.message.image_width, 280) + 'px',
-                maxWidth: 'calc(100vw - 6rem)',
+                maxWidth: '100%',
                 aspectRatio: pin.message.image_width + ' / ' + pin.message.image_height,
                 maxHeight: '150px',
               }"
@@ -157,6 +217,14 @@ defineExpose({ addPin, removePin })
               class="max-w-full max-h-[150px] rounded-lg object-cover"
             />
           </div>
+
+          <!-- Link embed cards -->
+          <LinkEmbedCard
+            v-for="(embed, i) in getEmbeds(pin.message)"
+            :key="i"
+            :embed="embed"
+            class="!max-w-full !mt-1"
+          />
 
           <!-- Actions -->
           <div class="flex items-center gap-1 mt-2">

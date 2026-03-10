@@ -34,6 +34,30 @@ api.interceptors.request.use(async (config) => {
   return config
 })
 
+// The backend returns raw reaction rows (one per user) on message load,
+// but grouped reactions (emoji/count/user_ids) from toggle endpoints.
+// Normalize raw rows into the grouped format the UI expects.
+function normalizeReactions(reactions) {
+  if (!reactions?.length) return reactions
+  // Already grouped format
+  if (reactions[0].count !== undefined || reactions[0].user_ids !== undefined) return reactions
+  // Raw format — group by emoji
+  const map = new Map()
+  for (const r of reactions) {
+    if (!r.emoji) continue
+    if (!map.has(r.emoji)) map.set(r.emoji, [])
+    if (r.user_id) map.get(r.emoji).push(r.user_id)
+  }
+  return Array.from(map, ([emoji, ids]) => ({ emoji, count: ids.length, user_ids: ids }))
+}
+
+function normalizeMessage(msg) {
+  if (msg && msg.reactions) msg.reactions = normalizeReactions(msg.reactions)
+  return msg
+}
+
+export { normalizeMessage }
+
 export default {
   // Auth
   async login() {
@@ -180,7 +204,7 @@ export default {
   async getMessages(channelId, before = null) {
     const params = before ? { before } : {}
     const res = await api.get(`/api/channels/${channelId}/messages`, { params })
-    return res.data
+    return res.data.map(normalizeMessage)
   },
   async sendMessage(channelId, content, file = null, replyToId = null, { imageWidth, imageHeight } = {}) {
     if (file) {
@@ -189,14 +213,14 @@ export default {
       if (content) formData.append('content', content)
       if (replyToId) formData.append('reply_to_id', replyToId)
       const res = await api.post(`/api/channels/${channelId}/messages`, formData)
-      return res.data
+      return normalizeMessage(res.data)
     }
     const body = { content }
     if (replyToId) body.reply_to_id = replyToId
     if (imageWidth) body.image_width = imageWidth
     if (imageHeight) body.image_height = imageHeight
     const res = await api.post(`/api/channels/${channelId}/messages`, body)
-    return res.data
+    return normalizeMessage(res.data)
   },
   async editMessage(messageId, content) {
     const res = await api.put(`/api/messages/${messageId}`, { content })
@@ -227,7 +251,7 @@ export default {
   async getDMMessages(dmChannelId, before = null) {
     const params = before ? { before } : {}
     const res = await api.get(`/api/dms/${dmChannelId}/messages`, { params })
-    return res.data
+    return res.data.map(normalizeMessage)
   },
   async sendDMMessage(dmChannelId, content, file = null, { imageWidth, imageHeight } = {}) {
     if (file) {
@@ -235,13 +259,13 @@ export default {
       formData.append('file', file)
       if (content) formData.append('content', content)
       const res = await api.post(`/api/dms/${dmChannelId}/messages`, formData)
-      return res.data
+      return normalizeMessage(res.data)
     }
     const body = { content }
     if (imageWidth) body.image_width = imageWidth
     if (imageHeight) body.image_height = imageHeight
     const res = await api.post(`/api/dms/${dmChannelId}/messages`, body)
-    return res.data
+    return normalizeMessage(res.data)
   },
   async toggleDMReaction(messageId, emoji) {
     const res = await api.put(`/api/dm-messages/${messageId}/reactions/${emoji}`)
@@ -305,7 +329,7 @@ export default {
     const params = { q: query }
     if (before) params.before = before
     const res = await api.get(`/api/servers/${serverId}/search`, { params })
-    return res.data
+    return res.data.map(normalizeMessage)
   },
 
   // Federation
@@ -386,7 +410,7 @@ export default {
   async getForumPostMessages(postId, before = null) {
     const params = before ? { before } : {}
     const res = await api.get(`/api/forum-posts/${postId}/messages`, { params })
-    return res.data
+    return res.data.map(normalizeMessage)
   },
   async sendForumPostMessage(postId, content, replyToId = null, { imageWidth, imageHeight } = {}) {
     const body = { content }

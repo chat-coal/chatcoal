@@ -15,7 +15,7 @@ import { useNotificationSettingsStore } from '@/stores/notificationSettings'
 import { connect, disconnect, on } from '@/services/websocket.service'
 import { useVersionCheck } from '@/composables/useVersionCheck'
 import { cleanup as voiceCleanup } from '@/services/voice.service'
-import api from '@/services/api.service'
+import api, { normalizeMessage } from '@/services/api.service'
 import ServerSidebar from '@/components/ServerSidebar.vue'
 import ChannelSidebar from '@/components/ChannelSidebar.vue'
 import ChatArea from '@/components/ChatArea.vue'
@@ -156,6 +156,7 @@ onMounted(async () => {
 
   // Server channel messages
   unsubMessage = on('message', (msg, serverId) => {
+    normalizeMessage(msg)
     typingStore.removeTyper('channel', msg.channel_id, msg.author_id)
     if (channelsStore.currentChannel && msg.channel_id === channelsStore.currentChannel.id) {
       messagesStore.addMessage(msg)
@@ -169,6 +170,7 @@ onMounted(async () => {
     }
   })
   unsubEdit = on('message_edit', (msg) => {
+    normalizeMessage(msg)
     messagesStore.updateMessage(msg)
   })
   unsubDelete = on('message_delete', (msg) => {
@@ -187,6 +189,7 @@ onMounted(async () => {
 
   // DM messages
   unsubDMMessage = on('dm_message', (msg) => {
+    normalizeMessage(msg)
     typingStore.removeTyper('dm', msg.dm_channel_id, msg.author_id)
     if (dmsStore.currentDMChannel && msg.dm_channel_id === dmsStore.currentDMChannel.id) {
       dmsStore.addMessage(msg)
@@ -206,6 +209,7 @@ onMounted(async () => {
     }
   })
   unsubDMEdit = on('dm_message_edit', (msg) => {
+    normalizeMessage(msg)
     dmsStore.updateMessage(msg)
   })
   unsubDMDelete = on('dm_message_delete', (msg) => {
