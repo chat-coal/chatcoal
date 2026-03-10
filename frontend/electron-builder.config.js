@@ -16,7 +16,7 @@ export default {
   ],
   publish: {
     provider: 'github',
-    owner: 'term-guy',
+    owner: 'chat-coal',
     repo: 'chatcoal',
   },
   mac: {
