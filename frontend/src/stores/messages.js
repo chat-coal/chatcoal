@@ -25,7 +25,7 @@ export const useMessagesStore = defineStore('messages', () => {
     }
   }
 
-  async function sendMessage(channelId, content, file = null, replyToId = null) {
+  async function sendMessage(channelId, content, file = null, replyToId = null, gifDims = {}) {
     const authStore = useAuthStore()
     const tempId = `_temp_${Date.now()}_${++tempIdCounter}`
     const optimistic = {
@@ -41,13 +41,15 @@ export const useMessagesStore = defineStore('messages', () => {
         content: replyingTo.value.content,
         author: replyingTo.value.author,
       } : null,
+      image_width: gifDims.imageWidth || 0,
+      image_height: gifDims.imageHeight || 0,
       reactions: [],
       _sending: true,
     }
     messages.value.push(optimistic)
 
     try {
-      const message = await api.sendMessage(channelId, content, file, replyToId)
+      const message = await api.sendMessage(channelId, content, file, replyToId, gifDims)
       if (messages.value.find(m => m.id === tempId)) {
         messages.value = messages.value.filter(m => m.id !== tempId)
         addMessage(message)

@@ -182,6 +182,32 @@ function dismissFailed() {
   }
 }
 
+const giphyUrlPattern = /^https?:\/\/media[0-9]*\.giphy\.com\/media\/[^\s]+\.gif(\?[^\s]*)?$/
+
+const isGifMessage = computed(() => {
+  const c = props.message.content?.trim()
+  if (!c) return false
+  return giphyUrlPattern.test(c)
+})
+
+const gifLoaded = ref(false)
+
+const gifContainerStyle = computed(() => {
+  const w = props.message.image_width
+  const h = props.message.image_height
+  if (!w || !h) return {}
+  const maxW = 400
+  const maxH = 300
+  const displayW = Math.min(w, maxW)
+  const displayH = Math.min((displayW / w) * h, maxH)
+  return {
+    width: displayW + 'px',
+    maxWidth: 'calc(100vw - 6rem)',
+    aspectRatio: w + ' / ' + h,
+    maxHeight: maxH + 'px',
+  }
+})
+
 const contentParts = computed(() => linkify(props.message.content))
 const embeds = computed(() => {
   if (!props.message.embeds) return []
@@ -305,6 +331,29 @@ const canDelete = () => isAuthor() || (props.mode === 'server' && serversStore.c
           enter to <button @click="saveEdit" class="text-[#E8521A] hover:underline cursor-pointer font-medium">save</button>
         </div>
       </div>
+      <!-- Inline GIF (Giphy URL as entire message) -->
+      <div v-else-if="isGifMessage" class="mt-1">
+        <div
+          v-if="message.image_width && message.image_height"
+          :style="gifContainerStyle"
+          class="rounded-xl overflow-hidden bg-[var(--surface-3)] relative"
+        >
+          <div v-if="!gifLoaded" class="absolute inset-0 animate-pulse bg-[var(--surface-3)]" />
+          <img
+            :src="message.content.trim()"
+            alt="GIF"
+            class="w-full h-full object-cover"
+            @load="gifLoaded = true"
+          />
+        </div>
+        <img
+          v-else
+          :src="message.content.trim()"
+          alt="GIF"
+          class="max-w-full sm:max-w-[400px] max-h-[300px] rounded-xl object-cover"
+        />
+      </div>
+
       <p v-else-if="message.content" class="text-[var(--text-2)] text-sm leading-relaxed break-words">
         <template v-for="(part, i) in contentParts" :key="i">
           <a

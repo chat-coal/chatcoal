@@ -44,7 +44,7 @@ export const useDMsStore = defineStore('dms', () => {
     }
   }
 
-  async function sendMessage(dmChannelId, content, file = null) {
+  async function sendMessage(dmChannelId, content, file = null, gifDims = {}) {
     const authStore = useAuthStore()
     const tempId = `_temp_${Date.now()}_${++tempIdCounter}`
     const optimistic = {
@@ -54,13 +54,15 @@ export const useDMsStore = defineStore('dms', () => {
       author: authStore.dbUser ? { ...authStore.dbUser } : null,
       dm_channel_id: dmChannelId,
       created_at: new Date().toISOString(),
+      image_width: gifDims.imageWidth || 0,
+      image_height: gifDims.imageHeight || 0,
       reactions: [],
       _sending: true,
     }
     messages.value.push(optimistic)
 
     try {
-      const message = await api.sendDMMessage(dmChannelId, content, file)
+      const message = await api.sendDMMessage(dmChannelId, content, file, gifDims)
       if (messages.value.find(m => m.id === tempId)) {
         messages.value = messages.value.filter(m => m.id !== tempId)
         addMessage(message)

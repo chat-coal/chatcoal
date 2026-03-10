@@ -138,8 +138,10 @@ func SendMessage(c *fiber.Ctx) error {
 	} else {
 		// JSON body
 		var body struct {
-			Content   string            `json:"content" validate:"required,max=4000"`
-			ReplyToID *models.Snowflake `json:"reply_to_id"`
+			Content     string            `json:"content" validate:"required,max=4000"`
+			ReplyToID   *models.Snowflake `json:"reply_to_id"`
+			ImageWidth  int               `json:"image_width"`
+			ImageHeight int               `json:"image_height"`
 		}
 		if err := c.BodyParser(&body); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid body"})
@@ -149,6 +151,8 @@ func SendMessage(c *fiber.Ctx) error {
 		}
 		content = body.Content
 		replyToID = body.ReplyToID
+		imageWidth = body.ImageWidth
+		imageHeight = body.ImageHeight
 	}
 
 	if len([]rune(content)) > 4000 {

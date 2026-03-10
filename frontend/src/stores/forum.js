@@ -74,7 +74,7 @@ export const useForumStore = defineStore('forum', () => {
     messagesLoading.value = false
   }
 
-  async function sendMessage(postId, content, replyToId = null) {
+  async function sendMessage(postId, content, replyToId = null, gifDims = {}) {
     const authStore = useAuthStore()
     const tempId = `_temp_${Date.now()}_${++tempIdCounter}`
     const optimistic = {
@@ -90,13 +90,15 @@ export const useForumStore = defineStore('forum', () => {
         content: replyingTo.value.content,
         author: replyingTo.value.author,
       } : null,
+      image_width: gifDims.imageWidth || 0,
+      image_height: gifDims.imageHeight || 0,
       reactions: [],
       _sending: true,
     }
     messages.value.push(optimistic)
 
     try {
-      const msg = await api.sendForumPostMessage(postId, content, replyToId)
+      const msg = await api.sendForumPostMessage(postId, content, replyToId, gifDims)
       if (messages.value.find(m => m.id === tempId)) {
         messages.value = messages.value.filter(m => m.id !== tempId)
         addMessage(msg)

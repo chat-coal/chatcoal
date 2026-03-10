@@ -184,7 +184,9 @@ func SendDMMessage(c *fiber.Ctx) error {
 		imageWidth, imageHeight = getImageDimensions(file)
 	} else {
 		var body struct {
-			Content string `json:"content" validate:"required,max=4000"`
+			Content     string `json:"content" validate:"required,max=4000"`
+			ImageWidth  int    `json:"image_width"`
+			ImageHeight int    `json:"image_height"`
 		}
 		if err := c.BodyParser(&body); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid body"})
@@ -193,6 +195,8 @@ func SendDMMessage(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": msg})
 		}
 		content = body.Content
+		imageWidth = body.ImageWidth
+		imageHeight = body.ImageHeight
 	}
 
 	if len([]rune(content)) > 4000 {

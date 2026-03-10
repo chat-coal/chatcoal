@@ -245,8 +245,10 @@ func SendForumPostMessage(c *fiber.Ctx) error {
 	}
 
 	var body struct {
-		Content   string            `json:"content" validate:"required,max=4000"`
-		ReplyToID *models.Snowflake `json:"reply_to_id"`
+		Content     string            `json:"content" validate:"required,max=4000"`
+		ReplyToID   *models.Snowflake `json:"reply_to_id"`
+		ImageWidth  int               `json:"image_width"`
+		ImageHeight int               `json:"image_height"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid body"})
@@ -256,7 +258,7 @@ func SendForumPostMessage(c *fiber.Ctx) error {
 	}
 
 	fpID := postID
-	message, err := services.CreateMessage(body.Content, post.ChannelID, ch.ServerID, user.ID, "", "", 0, 0, 0, body.ReplyToID, &fpID)
+	message, err := services.CreateMessage(body.Content, post.ChannelID, ch.ServerID, user.ID, "", "", 0, body.ImageWidth, body.ImageHeight, body.ReplyToID, &fpID)
 	if err != nil {
 		if services.IsValidationError(err) {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": services.ValidationErrorMessage(err)})

@@ -7,6 +7,7 @@ import { useDMsStore } from '@/stores/dms'
 import { useAuthStore } from '@/stores/auth'
 import { useForumStore } from '@/stores/forum'
 import { sendTyping, sendDMTyping } from '@/services/websocket.service'
+import GifPicker from './GifPicker.vue'
 
 const props = defineProps({
   mode: {
@@ -35,6 +36,7 @@ const content = ref('')
 const selectedFile = ref(null)
 const fileInputRef = ref(null)
 const textInputRef = ref(null)
+const showGifPicker = ref(false)
 let typingTimeout = null
 
 watch(() => props.replyingTo, (val) => {
@@ -101,6 +103,22 @@ function send() {
   }
 }
 
+function selectGif({ url, width, height }) {
+  showGifPicker.value = false
+  const replyId = props.replyingTo?.id || null
+  if (replyId) emit('cancel-reply')
+
+  const dims = { imageWidth: width, imageHeight: height }
+
+  if (props.mode === 'forum') {
+    forumStore.sendMessage(props.forumPostId, url, replyId, dims)
+  } else if (props.mode === 'dm') {
+    dmsStore.sendMessage(dmsStore.currentDMChannel.id, url, null, dims)
+  } else {
+    messagesStore.sendMessage(channelsStore.currentChannel.id, url, null, replyId, dims)
+  }
+}
+
 function handleInput() {
   if (!typingTimeout) {
     if (props.mode === 'dm') {
@@ -151,7 +169,10 @@ function handleInput() {
       </button>
     </div>
 
-    <div class="bg-[var(--card)] rounded-2xl flex items-center px-4 shadow-lg shadow-black/[0.04] border border-[var(--surface-border)]">
+    <div class="relative bg-[var(--card)] rounded-2xl flex items-center px-4 shadow-lg shadow-black/[0.04] border border-[var(--surface-border)]">
+      <!-- GIF picker -->
+      <GifPicker v-if="showGifPicker" @select="selectGif" @close="showGifPicker = false" />
+
       <!-- File attach button -->
       <button
         @click="openFilePicker"
@@ -169,6 +190,19 @@ function handleInput() {
         accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.txt,.zip"
         @change="onFileSelected"
       />
+
+      <!-- GIF button -->
+      <button
+        @click="showGifPicker = !showGifPicker"
+        class="text-[var(--text-4)] hover:text-[var(--text-1)] cursor-pointer transition-colors duration-150 p-1.5 rounded-lg hover:bg-[var(--surface-2)]"
+        :class="showGifPicker ? 'text-[#E8521A]' : ''"
+        title="Send a GIF"
+      >
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="4" width="20" height="16" rx="3" />
+          <text x="12" y="15" text-anchor="middle" font-size="8" font-weight="bold" fill="currentColor" stroke="none">GIF</text>
+        </svg>
+      </button>
 
       <input
         ref="textInputRef"

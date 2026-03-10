@@ -182,7 +182,7 @@ export default {
     const res = await api.get(`/api/channels/${channelId}/messages`, { params })
     return res.data
   },
-  async sendMessage(channelId, content, file = null, replyToId = null) {
+  async sendMessage(channelId, content, file = null, replyToId = null, { imageWidth, imageHeight } = {}) {
     if (file) {
       const formData = new FormData()
       formData.append('file', file)
@@ -193,6 +193,8 @@ export default {
     }
     const body = { content }
     if (replyToId) body.reply_to_id = replyToId
+    if (imageWidth) body.image_width = imageWidth
+    if (imageHeight) body.image_height = imageHeight
     const res = await api.post(`/api/channels/${channelId}/messages`, body)
     return res.data
   },
@@ -227,7 +229,7 @@ export default {
     const res = await api.get(`/api/dms/${dmChannelId}/messages`, { params })
     return res.data
   },
-  async sendDMMessage(dmChannelId, content, file = null) {
+  async sendDMMessage(dmChannelId, content, file = null, { imageWidth, imageHeight } = {}) {
     if (file) {
       const formData = new FormData()
       formData.append('file', file)
@@ -235,7 +237,10 @@ export default {
       const res = await api.post(`/api/dms/${dmChannelId}/messages`, formData)
       return res.data
     }
-    const res = await api.post(`/api/dms/${dmChannelId}/messages`, { content })
+    const body = { content }
+    if (imageWidth) body.image_width = imageWidth
+    if (imageHeight) body.image_height = imageHeight
+    const res = await api.post(`/api/dms/${dmChannelId}/messages`, body)
     return res.data
   },
   async toggleDMReaction(messageId, emoji) {
@@ -347,6 +352,16 @@ export default {
     await api.delete(`/api/servers/${serverId}/channels/${channelId}/federation/link/${linkId}`)
   },
 
+  // Giphy
+  async searchGifs(query, offset = 0) {
+    const res = await api.get('/api/giphy/search', { params: { q: query, limit: 20, offset } })
+    return res.data
+  },
+  async trendingGifs(offset = 0) {
+    const res = await api.get('/api/giphy/trending', { params: { limit: 20, offset } })
+    return res.data
+  },
+
   // Forum posts
   async getForumPosts(channelId, before = null) {
     const params = before ? { before } : {}
@@ -373,9 +388,11 @@ export default {
     const res = await api.get(`/api/forum-posts/${postId}/messages`, { params })
     return res.data
   },
-  async sendForumPostMessage(postId, content, replyToId = null) {
+  async sendForumPostMessage(postId, content, replyToId = null, { imageWidth, imageHeight } = {}) {
     const body = { content }
     if (replyToId) body.reply_to_id = replyToId
+    if (imageWidth) body.image_width = imageWidth
+    if (imageHeight) body.image_height = imageHeight
     const res = await api.post(`/api/forum-posts/${postId}/messages`, body)
     return res.data
   },

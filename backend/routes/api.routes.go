@@ -126,6 +126,11 @@ func SetupRoutes(app *fiber.App) {
 	admin.Post("/federation/instances", controllers.AddInstancePolicy)
 	admin.Delete("/federation/instances/:domain", controllers.RemoveInstancePolicy)
 
+	// Giphy proxy (keeps API key server-side)
+	giphy := api.Group("/giphy", middleware.UnifiedAuthMiddleware(), middleware.PerUserRateLimiter(30, 1*time.Minute))
+	giphy.Get("/search", controllers.SearchGifs)
+	giphy.Get("/trending", controllers.TrendingGifs)
+
 	// Channel federation management (requires PermManageChannels, enforced in controller)
 	servers.Post("/:id/channels/:channelId/federation", controllers.EnableChannelFederation)
 	servers.Delete("/:id/channels/:channelId/federation", controllers.DisableChannelFederation)
