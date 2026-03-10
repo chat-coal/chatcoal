@@ -101,7 +101,10 @@ function updateAccessibilityPoll() {
       } else if (!globalPttAvailable && trusted) {
         console.log('Accessibility permission granted — starting global PTT hook')
         await initGlobalPtt()
-        if (globalPttAvailable && mainWindow && !mainWindow.isDestroyed()) {
+        // Notify renderer that permission is granted (and hook started if
+        // uiohook succeeded). Send the event even if the hook didn't fully
+        // start — the renderer uses this to hide the permission banner.
+        if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('global-ptt-available')
         }
       }
@@ -400,11 +403,19 @@ ipcMain.handle('set-ptt-config', async (_event, { keyCode, webKeyCode, enabled }
   return globalPttAvailable
 })
 
-// IPC: Check if accessibility is granted (no prompt) and start hook if so
+// IPC: Check if accessibility is granted (no prompt) and start hook if so.
+// Returns true when the OS-level permission is confirmed — the hook itself
+// may start later (e.g. when the user joins a voice channel).
 ipcMain.handle('check-accessibility', async () => {
   if (globalPttAvailable) return true
-  if (process.platform === 'darwin' && !systemPreferences.isTrustedAccessibilityClient(false)) {
-    return false
+  if (process.platform === 'darwin') {
+    const trusted = systemPreferences.isTrustedAccessibilityClient(false)
+    if (!trusted) return false
+    // Permission granted — try to start the hook as a side-effect.
+    // Even if uiohook fails to start (native module issue, etc.),
+    // report the permission as granted so the UI banner hides.
+    await initGlobalPtt()
+    return true
   }
   await initGlobalPtt()
   return globalPttAvailable
@@ -415,11 +426,14 @@ ipcMain.handle('check-accessibility', async () => {
 ipcMain.handle('request-accessibility', async () => {
   if (globalPttAvailable) return true
 
-  if (process.platform === 'darwin' && !systemPreferences.isTrustedAccessibilityClient(false)) {
-    // Open the Accessibility pane — the user must grant permission and may
-    // need to restart the app for it to take effect.
-    shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility')
-    return false
+  if (process.platform === 'darwin') {
+    const trusted = systemPreferences.isTrustedAccessibilityClient(false)
+    if (!trusted) {
+      shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility')
+      return false
+    }
+    await initGlobalPtt()
+    return true
   }
 
   await initGlobalPtt()
