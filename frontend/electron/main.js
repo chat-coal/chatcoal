@@ -3,7 +3,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import http from 'node:http'
 import fs from 'node:fs'
-import https from 'node:https'
+import pkg from 'electron-updater'
+const { autoUpdater } = pkg
 import { isWayland, initPortalPtt, stopPortalPtt } from './portal-ptt.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -271,6 +272,10 @@ async function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show()
+    // Check for updates shortly after launch (non-blocking)
+    if (!isDev) {
+      setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 3000)
+    }
   })
 
   // Cmd+Shift+I to toggle DevTools (works in production too)
@@ -440,68 +445,41 @@ ipcMain.handle('request-accessibility', async () => {
   return globalPttAvailable
 })
 
-// IPC: Check for updates via GitHub Releases
-ipcMain.handle('check-for-updates', async () => {
-  const currentVersion = app.getVersion()
-  try {
-    const data = await new Promise((resolve, reject) => {
-      const req = https.get(
-        'https://api.github.com/repos/term-guy/chatcoal/releases/latest',
-        { headers: { 'User-Agent': `chatcoal/${currentVersion}` } },
-        (res) => {
-          let body = ''
-          res.on('data', (chunk) => { body += chunk })
-          res.on('end', () => {
-            if (res.statusCode === 200) {
-              resolve(JSON.parse(body))
-            } else {
-              reject(new Error(`GitHub API ${res.statusCode}`))
-            }
-          })
-        },
-      )
-      req.on('error', reject)
-      req.setTimeout(10000, () => { req.destroy(); reject(new Error('Timeout')) })
-    })
+// --- Auto-updater (electron-updater) ---
+autoUpdater.autoDownload = true
+autoUpdater.autoInstallOnAppQuit = true
+autoUpdater.logger = null // silence default logging
 
-    const latestVersion = (data.tag_name || '').replace(/^v/, '')
-    if (!latestVersion) return null
-
-    // Simple semver comparison: split into numbers, compare left to right
-    const current = currentVersion.split('.').map(Number)
-    const latest = latestVersion.split('.').map(Number)
-    let isNewer = false
-    for (let i = 0; i < 3; i++) {
-      if ((latest[i] || 0) > (current[i] || 0)) { isNewer = true; break }
-      if ((latest[i] || 0) < (current[i] || 0)) break
-    }
-
-    if (!isNewer) return null
-
-    // Find a suitable download asset for this platform
-    const platform = process.platform
-    const arch = process.arch
-    const assets = data.assets || []
-    let downloadUrl = data.html_url // fallback to release page
-
-    for (const asset of assets) {
-      const name = asset.name.toLowerCase()
-      if (platform === 'darwin' && name.endsWith('.dmg') && name.includes(arch)) {
-        downloadUrl = asset.browser_download_url
-        break
-      } else if (platform === 'win32' && name.endsWith('.exe')) {
-        downloadUrl = asset.browser_download_url
-        break
-      } else if (platform === 'linux' && name.endsWith('.appimage')) {
-        downloadUrl = asset.browser_download_url
-        break
-      }
-    }
-
-    return { currentVersion, latestVersion, downloadUrl }
-  } catch {
-    return null
+function sendUpdateStatus(data) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-status', data)
   }
+}
+
+autoUpdater.on('update-available', (info) => {
+  sendUpdateStatus({ status: 'available', version: info.version })
+})
+
+autoUpdater.on('download-progress', (progress) => {
+  sendUpdateStatus({ status: 'downloading', percent: Math.round(progress.percent) })
+})
+
+autoUpdater.on('update-downloaded', (info) => {
+  sendUpdateStatus({ status: 'ready', version: info.version })
+})
+
+autoUpdater.on('error', (err) => {
+  console.warn('Auto-updater error:', err.message)
+  sendUpdateStatus({ status: 'error', message: err.message })
+})
+
+ipcMain.handle('check-for-updates', () => {
+  if (isDev) return
+  autoUpdater.checkForUpdates().catch(() => {})
+})
+
+ipcMain.handle('install-update', () => {
+  autoUpdater.quitAndInstall(false, true)
 })
 
 // Register protocol for deep linking (future use)

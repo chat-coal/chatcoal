@@ -6,7 +6,7 @@ const ELECTRON_POLL_INTERVAL = 60 * 60 * 1000 // 1 hour
 
 export function useVersionCheck() {
   const updateAvailable = ref(false)
-  const electronUpdate = ref(null) // { latestVersion, downloadUrl }
+  const electronUpdate = ref(null) // { version, status, percent }
   let currentVersion = null
   let timer = null
 
@@ -25,17 +25,29 @@ export function useVersionCheck() {
     }
   }
 
-  // Electron: check GitHub Releases for a newer version
-  async function checkElectronVersion() {
-    try {
-      const result = await window.electronAPI.checkForUpdates()
-      if (result) {
+  // Electron: auto-updater events are pushed from the main process.
+  // A manual check can also be triggered via the IPC call.
+  function handleUpdateStatus(data) {
+    if (data.status === 'available') {
+      updateAvailable.value = true
+      electronUpdate.value = { version: data.version, status: 'downloading', percent: 0 }
+    } else if (data.status === 'downloading') {
+      if (electronUpdate.value) electronUpdate.value.percent = data.percent
+    } else if (data.status === 'ready') {
+      if (electronUpdate.value) {
+        electronUpdate.value.status = 'ready'
+        electronUpdate.value.percent = 100
+      } else {
         updateAvailable.value = true
-        electronUpdate.value = result
+        electronUpdate.value = { version: data.version, status: 'ready', percent: 100 }
       }
-    } catch {
-      // ignore check errors
+    } else if (data.status === 'error') {
+      // Silently ignore update errors — don't disrupt the user
     }
+  }
+
+  function checkElectronVersion() {
+    window.electronAPI.checkForUpdates()
   }
 
   function handleVisibilityChange() {
@@ -48,7 +60,8 @@ export function useVersionCheck() {
     if (import.meta.env.DEV) return
 
     if (isElectron) {
-      checkElectronVersion()
+      window.electronAPI.onUpdateStatus(handleUpdateStatus)
+      // Main process auto-checks 3s after launch; also poll hourly
       timer = setInterval(checkElectronVersion, ELECTRON_POLL_INTERVAL)
     } else {
       checkWebVersion()
@@ -60,6 +73,7 @@ export function useVersionCheck() {
   onUnmounted(() => {
     clearInterval(timer)
     document.removeEventListener('visibilitychange', handleVisibilityChange)
+    if (isElectron) window.electronAPI?.removeUpdateListener()
   })
 
   const reloading = ref(false)
@@ -69,10 +83,8 @@ export function useVersionCheck() {
     window.location.reload()
   }
 
-  function openDownload() {
-    if (electronUpdate.value?.downloadUrl) {
-      window.electronAPI.openExternal(electronUpdate.value.downloadUrl)
-    }
+  function installUpdate() {
+    window.electronAPI.installUpdate()
   }
 
   function dismissUpdate() {
@@ -80,5 +92,5 @@ export function useVersionCheck() {
     electronUpdate.value = null
   }
 
-  return { updateAvailable, electronUpdate, reloading, reload, openDownload, dismissUpdate }
+  return { updateAvailable, electronUpdate, reloading, reload, installUpdate, dismissUpdate }
 }

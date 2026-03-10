@@ -16,6 +16,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('federation-auth', authUrl, callbackOrigin),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  onUpdateStatus: (callback) => {
+    ipcRenderer.on('update-status', (_event, data) => callback(data))
+  },
+  removeUpdateListener: () => {
+    ipcRenderer.removeAllListeners('update-status')
+  },
   setPttConfig: (config) => ipcRenderer.invoke('set-ptt-config', config),
   checkAccessibility: () => ipcRenderer.invoke('check-accessibility'),
   requestAccessibility: () => ipcRenderer.invoke('request-accessibility'),

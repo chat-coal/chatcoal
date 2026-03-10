@@ -14,8 +14,13 @@ export default {
   asarUnpack: [
     '**/node_modules/uiohook-napi/**',
   ],
+  publish: {
+    provider: 'github',
+    owner: 'term-guy',
+    repo: 'chatcoal',
+  },
   mac: {
-    target: ['dmg'],
+    target: ['dmg', 'zip'],
     category: 'public.app-category.social-networking',
     icon: 'build/icon.icns',
   },

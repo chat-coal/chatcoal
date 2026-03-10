@@ -50,13 +50,7 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
           VITE_LIVEKIT_URL: ${{ vars.VITE_LIVEKIT_URL }}
 
-      - name: Build Electron (${{ matrix.platform }})
-        run: npx electron-builder --config electron-builder.config.js --${{ matrix.platform }} --publish never
-
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            frontend/release/*.dmg
-            frontend/release/*.exe
-            frontend/release/*.AppImage
+      - name: Build & publish Electron (${{ matrix.platform }})
+        run: npx electron-builder --config electron-builder.config.js --${{ matrix.platform }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

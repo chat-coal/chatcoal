@@ -51,7 +51,7 @@ const kickedModal = ref(null)
 const bannedModal = ref(null)
 
 const wsConnected = ref(true)
-const { updateAvailable, electronUpdate, reloading, reload, openDownload, dismissUpdate } = useVersionCheck()
+const { updateAvailable, electronUpdate, reloading, reload, installUpdate, dismissUpdate } = useVersionCheck()
 
 // Email verification banner state
 const resendingEmail = ref(false)
@@ -544,10 +544,14 @@ watchEffect(() => {
     <!-- New version available banner -->
     <Transition name="slide-banner">
       <div v-if="updateAvailable" class="shrink-0 flex items-center justify-center gap-2 bg-blue-600 text-white text-xs font-medium py-1.5 px-4">
-        <template v-if="electronUpdate">
-          Update available: v{{ electronUpdate.latestVersion }}
-          <button @click="openDownload" class="underline underline-offset-2 hover:text-blue-200 transition-colors cursor-pointer">Download</button>
+        <template v-if="electronUpdate?.status === 'ready'">
+          v{{ electronUpdate.version }} is ready.
+          <button @click="installUpdate" class="underline underline-offset-2 hover:text-blue-200 transition-colors cursor-pointer">Restart to update</button>
           <button @click="dismissUpdate" class="text-blue-200 hover:text-white transition-colors cursor-pointer ml-1">&times;</button>
+        </template>
+        <template v-else-if="electronUpdate?.status === 'downloading'">
+          <div class="w-3 h-3 border-[1.5px] border-white border-t-transparent rounded-full animate-spin"></div>
+          Downloading v{{ electronUpdate.version }}&hellip; {{ electronUpdate.percent }}%
         </template>
         <template v-else-if="reloading">
           <div class="w-3 h-3 border-[1.5px] border-white border-t-transparent rounded-full animate-spin"></div>
