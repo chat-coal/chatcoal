@@ -486,6 +486,12 @@ ipcMain.handle('install-update', () => {
   // Disable autoInstallOnAppQuit so the explicit quitAndInstall takes
   // full control and macOS doesn't silently swallow the restart.
   autoUpdater.autoInstallOnAppQuit = false
+  // Close the local HTTP server before quitting — an open server socket
+  // keeps the Node process alive on macOS and prevents a clean restart.
+  if (localServer) {
+    localServer.close()
+    localServer = null
+  }
   setImmediate(() => autoUpdater.quitAndInstall(false, true))
 })
 
@@ -502,9 +508,15 @@ app.whenReady().then(async () => {
   await createWindow()
 })
 
+app.on('before-quit', () => {
+  if (localServer) {
+    localServer.close()
+    localServer = null
+  }
+})
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    localServer?.close()
     app.quit()
   }
 })

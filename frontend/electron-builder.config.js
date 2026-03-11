@@ -24,6 +24,11 @@ export default {
     target: ['dmg', 'zip'],
     category: 'public.app-category.social-networking',
     icon: 'build/icon.icns',
+    hardenedRuntime: true,
+    gatekeeperAssess: false,
+    entitlements: 'build/entitlements.mac.plist',
+    entitlementsInherit: 'build/entitlements.mac.plist',
+    notarize: true,
   },
   win: {
     target: ['nsis'],
