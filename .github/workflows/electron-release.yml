@@ -14,10 +14,16 @@ jobs:
         include:
           - os: macos-latest
             platform: mac
+            arch: arm64
+          - os: macos-13
+            platform: mac
+            arch: x64
           - os: ubuntu-latest
             platform: linux
+            arch: ""
           - os: windows-latest
             platform: win
+            arch: ""
 
     runs-on: ${{ matrix.os }}
 
@@ -50,8 +56,8 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
           VITE_LIVEKIT_URL: ${{ vars.VITE_LIVEKIT_URL }}
 
-      - name: Build & publish Electron (${{ matrix.platform }})
-        run: npx electron-builder --config electron-builder.config.js --${{ matrix.platform }} --publish always
+      - name: Build & publish Electron (${{ matrix.platform }} ${{ matrix.arch }})
+        run: npx electron-builder --config electron-builder.config.js --${{ matrix.platform }} ${{ matrix.arch && format('--arch {0}', matrix.arch) || '' }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ matrix.platform == 'mac' && secrets.CSC_LINK || '' }}

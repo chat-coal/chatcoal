@@ -21,7 +21,10 @@ export default {
     releaseType: 'release',
   },
   mac: {
-    target: ['dmg', 'zip'],
+    target: [
+      { target: 'dmg', arch: ['x64', 'arm64'] },
+      { target: 'zip', arch: ['x64', 'arm64'] },
+    ],
     category: 'public.app-category.social-networking',
     icon: 'build/icon.icns',
     hardenedRuntime: true,
