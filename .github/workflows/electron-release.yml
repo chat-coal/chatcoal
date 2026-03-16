@@ -14,10 +14,10 @@ jobs:
         include:
           - os: macos-latest
             platform: mac
-            arch: arm64
+            arch: --arm64
           - os: macos-13
             platform: mac
-            arch: x64
+            arch: --x64
           - os: ubuntu-latest
             platform: linux
             arch: ""
@@ -57,7 +57,7 @@ jobs:
           VITE_LIVEKIT_URL: ${{ vars.VITE_LIVEKIT_URL }}
 
       - name: Build & publish Electron (${{ matrix.platform }} ${{ matrix.arch }})
-        run: npx electron-builder --config electron-builder.config.js --${{ matrix.platform }} ${{ matrix.arch && format('--arch {0}', matrix.arch) || '' }} --publish always
+        run: npx electron-builder --config electron-builder.config.js --${{ matrix.platform }} ${{ matrix.arch }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ matrix.platform == 'mac' && secrets.CSC_LINK || '' }}
