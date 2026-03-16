@@ -1,8 +1,13 @@
 {
   "name": "chatcoal",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": true,
   "type": "module",
+  "homepage": "https://chatcoal.com",
+  "author": {
+    "name": "chatcoal",
+    "email": "hello@chatcoal.com"
+  },
   "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
