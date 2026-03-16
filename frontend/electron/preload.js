@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   federationAuth: (authUrl, callbackOrigin) =>
     ipcRenderer.invoke('federation-auth', authUrl, callbackOrigin),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  getUpdateStatus: () => ipcRenderer.invoke('get-update-status'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   downloadUpdate: () => ipcRenderer.invoke('download-update'),
   installUpdate: () => ipcRenderer.invoke('install-update'),

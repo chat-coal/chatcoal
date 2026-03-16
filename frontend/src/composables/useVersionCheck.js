@@ -62,6 +62,10 @@ export function useVersionCheck() {
 
     if (isElectron) {
       window.electronAPI.onUpdateStatus(handleUpdateStatus)
+      // Replay any update status that arrived before this listener registered
+      window.electronAPI.getUpdateStatus().then((cached) => {
+        if (cached) handleUpdateStatus(cached)
+      })
       // Main process auto-checks 3s after launch; also poll hourly
       timer = setInterval(checkElectronVersion, ELECTRON_POLL_INTERVAL)
     } else {

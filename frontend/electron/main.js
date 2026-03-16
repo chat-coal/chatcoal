@@ -464,7 +464,10 @@ autoUpdater.autoDownload = false
 autoUpdater.autoInstallOnAppQuit = true
 autoUpdater.logger = null // silence default logging
 
+let lastUpdateStatus = null
+
 function sendUpdateStatus(data) {
+  lastUpdateStatus = data
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('update-status', data)
   }
@@ -486,6 +489,8 @@ autoUpdater.on('error', (err) => {
   console.warn('Auto-updater error:', err.message)
   sendUpdateStatus({ status: 'error', message: err.message })
 })
+
+ipcMain.handle('get-update-status', () => lastUpdateStatus)
 
 ipcMain.handle('check-for-updates', () => {
   if (isDev) return
