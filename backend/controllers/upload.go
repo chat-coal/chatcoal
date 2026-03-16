@@ -83,10 +83,33 @@ func mimeFromExt(ext string) string {
 	}
 }
 
+// allowedMimeForExt maps each allowed file extension to the set of content types
+// that http.DetectContentType may return for legitimate files of that type.
+// This cross-validates the extension against actual file content to prevent
+// spoofed extensions (e.g. an HTML file renamed to .txt).
+var allowedMimeForExt = map[string]map[string]bool{
+	".jpg":  {"image/jpeg": true},
+	".jpeg": {"image/jpeg": true},
+	".png":  {"image/png": true},
+	".gif":  {"image/gif": true},
+	".webp": {"image/webp": true, "application/octet-stream": true}, // webp may detect as octet-stream
+	".pdf":  {"application/pdf": true, "application/octet-stream": true},
+	".txt":  {"text/plain": true},
+	".zip":  {"application/zip": true, "application/octet-stream": true},
+}
+
 // checkMagicBytes reads the first 512 bytes of a file and uses
-// http.DetectContentType to verify the actual content type is allowed.
-// This prevents spoofed extensions (e.g. an HTML file renamed to .jpg).
+// http.DetectContentType to verify the actual content type is allowed
+// AND matches what the file extension claims. This prevents both spoofed
+// extensions (e.g. HTML renamed to .jpg) and spoofed magic bytes
+// (e.g. HTML with PNG header prepended but .html extension).
 func checkMagicBytes(file *multipart.FileHeader) error {
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	allowed, ok := allowedMimeForExt[ext]
+	if !ok {
+		return fmt.Errorf("file extension not allowed")
+	}
+
 	f, err := file.Open()
 	if err != nil {
 		return fmt.Errorf("could not open file")
@@ -105,12 +128,10 @@ func checkMagicBytes(file *multipart.FileHeader) error {
 	detected := http.DetectContentType(buf[:n])
 	// Strip charset suffix, e.g. "text/plain; charset=utf-8" → "text/plain"
 	base := strings.TrimSpace(strings.SplitN(detected, ";", 2)[0])
-	switch base {
-	case "image/jpeg", "image/png", "image/gif", "image/webp",
-		"application/pdf", "application/zip", "text/plain":
-		return nil
+	if !allowed[base] {
+		return fmt.Errorf("file content does not match extension")
 	}
-	return fmt.Errorf("file content not allowed")
+	return nil
 }
 
 // getImageDimensions reads just the header of a multipart file to extract width/height.

@@ -20,7 +20,8 @@ func SetupRoutes(app *fiber.App) {
 	// File serving (presigned S3 redirect) — no auth required; access control relies on
 	// cryptographically random UUID v4 keys (unguessable) in the filename.
 	// Browsers never send Authorization headers for image/CSS loads, so auth here would break avatars.
-	api.Get("/files/*", controllers.ServeFile)
+	// Rate-limited to prevent brute-force URL enumeration.
+	api.Get("/files/*", middleware.PerUserRateLimiter(120, 1*time.Minute), controllers.ServeFile)
 
 	// Auth routes
 	auth := api.Group("/auth", middleware.UnifiedAuthMiddleware(), perUser)

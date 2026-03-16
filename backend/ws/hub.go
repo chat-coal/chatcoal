@@ -277,6 +277,28 @@ func (h *Hub) Subscribe(client *Client, serverID models.Snowflake) {
 	s.mu.Unlock()
 }
 
+// SubscribeUser subscribes all active WebSocket clients of a user to a server
+// broadcast group (e.g., after joining a server via the REST API).
+func (h *Hub) SubscribeUser(userID models.Snowflake, serverID models.Snowflake) {
+	h.mu.RLock()
+	clients := h.userClients[userID]
+	h.mu.RUnlock()
+	for client := range clients {
+		h.Subscribe(client, serverID)
+	}
+}
+
+// UnsubscribeUser removes all active WebSocket clients of a user from a server
+// broadcast group (e.g., after leaving a server via the REST API).
+func (h *Hub) UnsubscribeUser(userID models.Snowflake, serverID models.Snowflake) {
+	h.mu.RLock()
+	clients := h.userClients[userID]
+	h.mu.RUnlock()
+	for client := range clients {
+		h.Unsubscribe(client, serverID)
+	}
+}
+
 // Unsubscribe removes a client from a server broadcast group (e.g., after leaving a server).
 func (h *Hub) Unsubscribe(client *Client, serverID models.Snowflake) {
 	client.RemoveServerID(serverID)
@@ -314,6 +336,20 @@ func (h *Hub) LeaveVoice(client *Client) {
 
 	userID := client.UserID
 	h.submit(func() { cache.LeaveVoiceChannel(userID) })
+}
+
+// ShareVoiceChannel returns true if both users are in the same voice channel.
+func (h *Hub) ShareVoiceChannel(userA, userB models.Snowflake) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, users := range h.voiceStates {
+		if _, hasA := users[userA]; hasA {
+			if _, hasB := users[userB]; hasB {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // leaveVoiceLocked removes a client from voice. Caller must hold h.mu.

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"chatcoal/cache"
 	"chatcoal/models"
 
 	"github.com/gofiber/contrib/websocket"
@@ -62,6 +63,13 @@ func (c *Client) AddServerID(serverID models.Snowflake) {
 	c.sidMu.Unlock()
 }
 
+// IsSubscribed returns true if the client is subscribed to the given server.
+func (c *Client) IsSubscribed(serverID models.Snowflake) bool {
+	c.sidMu.RLock()
+	defer c.sidMu.RUnlock()
+	return c.serverIDs[serverID]
+}
+
 // RemoveServerID removes a server from the client's subscriptions.
 func (c *Client) RemoveServerID(serverID models.Snowflake) {
 	c.sidMu.Lock()
@@ -106,7 +114,7 @@ func (c *Client) ReadPump() {
 		switch eventType {
 		case "typing":
 			serverID, ok := parseSnowflake(event["server_id"])
-			if !ok {
+			if !ok || !c.IsSubscribed(serverID) {
 				continue
 			}
 			payload, _ := json.Marshal(map[string]interface{}{
@@ -148,7 +156,7 @@ func (c *Client) ReadPump() {
 
 		case "subscribe":
 			serverID, ok := parseSnowflake(event["server_id"])
-			if ok {
+			if ok && cache.IsMember(c.UserID, serverID) {
 				GetHub().Subscribe(c, serverID)
 			}
 
@@ -164,6 +172,11 @@ func (c *Client) ReadPump() {
 func (c *Client) forwardWebRTCSignal(event map[string]interface{}) {
 	targetUserID, ok := parseSnowflake(event["target_user_id"])
 	if !ok {
+		return
+	}
+
+	// Verify both users share the same voice channel before forwarding signaling data.
+	if !GetHub().ShareVoiceChannel(c.UserID, targetUserID) {
 		return
 	}
 

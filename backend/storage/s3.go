@@ -105,9 +105,16 @@ func UploadReader(ctx context.Context, r io.Reader, size int64, key string, cont
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	info, err := client.PutObject(ctx, bucket, key, r, size, minio.PutObjectOptions{
+	opts := minio.PutObjectOptions{
 		ContentType: contentType,
-	})
+	}
+	// Force non-image files to download instead of rendering inline.
+	// This prevents XSS if a malicious file (e.g. HTML) somehow gets uploaded.
+	if !strings.HasPrefix(contentType, "image/") {
+		opts.ContentDisposition = "attachment"
+	}
+
+	info, err := client.PutObject(ctx, bucket, key, r, size, opts)
 	if err != nil {
 		log.Errorf("[S3] PutObject failed: %v", err)
 		return "", fmt.Errorf("s3 upload: %w", err)

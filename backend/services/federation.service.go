@@ -15,6 +15,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -592,8 +593,9 @@ func FetchRemoteChannelInfo(domain, federationID string) (map[string]string, err
 	if err := ValidatePublicDomain(domain); err != nil {
 		return nil, err
 	}
+	localDomain := os.Getenv("FEDERATION_DOMAIN")
 	client := &http.Client{Timeout: 10 * time.Second, Transport: safeTransport()}
-	resp, err := client.Get("https://" + domain + "/federation/channels/" + federationID + "/info")
+	resp, err := client.Get("https://" + domain + "/federation/channels/" + federationID + "/info?domain=" + url.QueryEscape(localDomain))
 	if err != nil {
 		return nil, fmt.Errorf("federation: failed to reach %s: %w", domain, err)
 	}

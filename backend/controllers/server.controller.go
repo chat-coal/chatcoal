@@ -59,6 +59,9 @@ func CreateServer(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create server"})
 	}
 
+	// Subscribe the user's active WebSocket clients to the new server's broadcasts
+	ws.GetHub().SubscribeUser(user.ID, server.ID)
+
 	return c.Status(fiber.StatusCreated).JSON(server)
 }
 
@@ -100,10 +103,13 @@ func JoinServer(c *fiber.Ctx) error {
 	server, err := services.JoinServer(user.ID, body.InviteCode)
 	if err != nil {
 		if err.Error() == "you are banned from this server" {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": err.Error()})
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Unable to join this server"})
 		}
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Invalid invite code"})
 	}
+
+	// Subscribe the user's active WebSocket clients to the server's broadcasts
+	ws.GetHub().SubscribeUser(user.ID, server.ID)
 
 	if newMember, err := services.GetServerMember(user.ID, server.ID); err == nil {
 		broadcastEvent(server.ID, "member_join", newMember)
@@ -133,12 +139,15 @@ func LeaveServer(c *fiber.Ctx) error {
 	member, err := services.LeaveServer(user.ID, serverID)
 	if err != nil {
 		if err.Error() == "owner cannot leave server" {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": err.Error()})
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Cannot leave this server"})
 		}
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden"})
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Cannot leave this server"})
 	}
 
 	broadcastEvent(serverID, "member_leave", member)
+
+	// Unsubscribe the user's active WebSocket clients from the server's broadcasts
+	ws.GetHub().UnsubscribeUser(user.ID, serverID)
 
 	if srvErr == nil {
 		if msg := services.PostSystemAnnouncement(server, "leave", "left the server", user.ID); msg != nil {
@@ -555,14 +564,14 @@ func JoinPublicServer(c *fiber.Ctx) error {
 
 	server, err := services.JoinPublicServer(user.ID, serverID)
 	if err != nil {
-		if err.Error() == "you are banned from this server" {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": err.Error()})
-		}
-		if err.Error() == "server is not public" {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": err.Error()})
+		if err.Error() == "you are banned from this server" || err.Error() == "server is not public" {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Unable to join this server"})
 		}
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Server not found"})
 	}
+
+	// Subscribe the user's active WebSocket clients to the server's broadcasts
+	ws.GetHub().SubscribeUser(user.ID, server.ID)
 
 	if newMember, err := services.GetServerMember(user.ID, server.ID); err == nil {
 		broadcastEvent(server.ID, "member_join", newMember)

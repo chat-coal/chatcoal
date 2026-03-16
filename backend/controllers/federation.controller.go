@@ -348,7 +348,20 @@ func UnlinkRemoteChannel(c *fiber.Ctx) error {
 // --- Server-to-Server Channel Federation Endpoints ---
 
 // GetFederatedChannelInfo handles GET /federation/channels/:federationId/info.
+// Requires a "domain" query parameter identifying the requesting instance,
+// which must be allowed by the federation policy.
 func GetFederatedChannelInfo(c *fiber.Ctx) error {
+	requesterDomain := c.Query("domain")
+	if requesterDomain == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "domain query parameter is required"})
+	}
+
+	// Verify the requesting instance is allowed by federation policy.
+	allowed, err := services.CheckInstanceAllowed(requesterDomain)
+	if err != nil || !allowed {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "federation with this instance is not allowed"})
+	}
+
 	fedID := c.Params("federationId")
 	ch, err := services.GetChannelByFederationID(fedID)
 	if err != nil {

@@ -2,6 +2,7 @@ package services
 
 import (
 	"crypto/rand"
+	"errors"
 	"chatcoal/database"
 	"chatcoal/models"
 	"encoding/hex"
@@ -10,10 +11,12 @@ import (
 	"gorm.io/gorm"
 )
 
+var ErrInviteExhausted = errors.New("invite has reached max uses")
+
 func generateInviteCode10() string {
-	b := make([]byte, 5)
+	b := make([]byte, 16)
 	rand.Read(b)
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b)[:10]
 }
 
 func CreateInvite(serverID, creatorID models.Snowflake, maxUses int, expiresIn int) (*models.Invite, error) {
@@ -82,9 +85,16 @@ func GetInviteByCode(code string) (*models.Invite, error) {
 }
 
 func UseInvite(inviteID models.Snowflake) error {
-	return database.Database.Model(&models.Invite{}).
-		Where("id = ?", inviteID).
-		UpdateColumn("uses", gorm.Expr("uses + 1")).Error
+	result := database.Database.Model(&models.Invite{}).
+		Where("id = ? AND (max_uses = 0 OR uses < max_uses)", inviteID).
+		UpdateColumn("uses", gorm.Expr("uses + 1"))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrInviteExhausted
+	}
+	return nil
 }
 
 func DeleteInvite(inviteID, serverID models.Snowflake) error {
