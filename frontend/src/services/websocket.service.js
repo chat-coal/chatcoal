@@ -5,6 +5,8 @@ const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000'
 let socket = null
 let reconnectTimer = null
 let currentUserID = null
+let reconnectAttempts = 0
+const MAX_RECONNECT_DELAY = 30000
 const listeners = new Map()
 
 export async function connect(userID) {
@@ -18,6 +20,7 @@ export async function connect(userID) {
   socket = new WebSocket(`${WS_URL}/ws`)
 
   socket.onopen = () => {
+    reconnectAttempts = 0
     socket.send(JSON.stringify({ type: 'auth', token }))
     emit('connected', {})
   }
@@ -33,11 +36,18 @@ export async function connect(userID) {
 
   socket.onclose = () => {
     emit('disconnected', {})
+    // Only reconnect if user is still logged in
+    if (!currentUserID) return
+    const user = auth.currentUser
+    const fedToken = sessionStorage.getItem('fed_token')
+    if (!user && !fedToken) return
+    const delay = Math.min(1000 * 2 ** reconnectAttempts, MAX_RECONNECT_DELAY)
+    reconnectAttempts++
     reconnectTimer = setTimeout(() => {
       if (currentUserID) {
         connect(currentUserID)
       }
-    }, 3000)
+    }, delay)
   }
 
   socket.onerror = () => {

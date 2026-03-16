@@ -278,17 +278,21 @@ async function createWindow() {
     }
   })
 
-  // Cmd+Shift+I to toggle DevTools (works in production too)
-  mainWindow.webContents.on('before-input-event', (_event, input) => {
-    if (input.meta && input.shift && input.key === 'I') {
-      mainWindow.webContents.toggleDevTools()
-    }
-  })
+  // Cmd+Shift+I to toggle DevTools (dev only)
+  if (isDev) {
+    mainWindow.webContents.on('before-input-event', (_event, input) => {
+      if (input.meta && input.shift && input.key === 'I') {
+        mainWindow.webContents.toggleDevTools()
+      }
+    })
+  }
 
   if (isDev) {
     loadDevServer()
   } else {
-    localServer = await startLocalServer()
+    if (!localServer) {
+      localServer = await startLocalServer()
+    }
     const port = localServer.address().port
     mainWindow.loadURL(`http://localhost:${port}`)
   }
@@ -341,9 +345,19 @@ ipcMain.handle('federation-auth', async (_event, authUrl, callbackOrigin) => {
       },
     })
 
+    function isFederationCallback(navUrl) {
+      try {
+        const nav = new URL(navUrl)
+        const expected = new URL(callbackOrigin)
+        return nav.origin === expected.origin && nav.pathname.startsWith('/federation/callback')
+      } catch {
+        return false
+      }
+    }
+
     // Intercept navigation to the callback URL
     authWindow.webContents.on('will-navigate', (_e, navUrl) => {
-      if (navUrl.startsWith(callbackOrigin + '/federation/callback')) {
+      if (isFederationCallback(navUrl)) {
         const url = new URL(navUrl)
         const token = url.searchParams.get('token')
         authWindow.close()
@@ -357,7 +371,7 @@ ipcMain.handle('federation-auth', async (_event, authUrl, callbackOrigin) => {
 
     // Also intercept redirects (some auth flows use 302)
     authWindow.webContents.on('will-redirect', (_e, navUrl) => {
-      if (navUrl.startsWith(callbackOrigin + '/federation/callback')) {
+      if (isFederationCallback(navUrl)) {
         const url = new URL(navUrl)
         const token = url.searchParams.get('token')
         authWindow.close()

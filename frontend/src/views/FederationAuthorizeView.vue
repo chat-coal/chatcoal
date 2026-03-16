@@ -98,7 +98,18 @@ async function handleAuthorize() {
   try {
     const { data } = await api.federationAuthorize(visiting.value, nonce.value, callback.value)
     step.value = 'done'
-    // Redirect the browser to the visiting instance's callback URL.
+    // Validate the redirect URL origin matches the expected callback before navigating.
+    try {
+      const redirectOrigin = new URL(data.redirect_url).origin
+      const callbackOrigin = new URL(callback.value).origin
+      if (redirectOrigin !== callbackOrigin) {
+        throw new Error('Redirect origin mismatch')
+      }
+    } catch {
+      error.value = 'Invalid redirect URL from server.'
+      step.value = 'consent'
+      return
+    }
     window.location.href = data.redirect_url
   } catch (e) {
     error.value = e?.response?.data?.error || 'Authorization failed. Please try again.'

@@ -57,7 +57,11 @@ function redirectAfterLogin() {
   if (!auth.dbUser?.display_name) {
     router.push('/onboarding')
   } else {
-    router.push(route.query.redirect || '/channels/@me')
+    const redirect = route.query.redirect
+    const safe = typeof redirect === 'string' && redirect.startsWith('/') && !redirect.startsWith('//')
+      ? redirect
+      : '/channels/@me'
+    router.push(safe)
   }
 }
 

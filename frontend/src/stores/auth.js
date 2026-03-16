@@ -21,7 +21,7 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref(null)
   const dbUser = ref(null)
   const loading = ref(true)
-  const federationToken = ref(localStorage.getItem('fed_token') || null)
+  const federationToken = ref(sessionStorage.getItem('fed_token') || null)
   const isFederated = computed(() => !!federationToken.value)
 
   function init() {
@@ -32,7 +32,7 @@ export const useAuthStore = defineStore('auth', () => {
           .then((u) => { dbUser.value = u })
           .catch(() => {
             // Expired or invalid — clear it.
-            localStorage.removeItem('fed_token')
+            sessionStorage.removeItem('fed_token')
             federationToken.value = null
           })
           .finally(() => {
@@ -136,7 +136,7 @@ export const useAuthStore = defineStore('auth', () => {
   // Called by FederationCallbackView after a successful /api/federation/verify.
   async function loginWithFederationCallback(token) {
     const { data } = await api.verifyFederation(token)
-    localStorage.setItem('fed_token', data.session_token)
+    sessionStorage.setItem('fed_token', data.session_token)
     federationToken.value = data.session_token
     dbUser.value = data.user
   }
@@ -150,7 +150,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function logout() {
     // Clear federation session if active.
     if (federationToken.value) {
-      localStorage.removeItem('fed_token')
+      sessionStorage.removeItem('fed_token')
       federationToken.value = null
       dbUser.value = null
       return
@@ -177,7 +177,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (federationToken.value) {
       // Federated user — no Firebase session to sign out of.
       await api.deleteAccount()
-      localStorage.removeItem('fed_token')
+      sessionStorage.removeItem('fed_token')
       federationToken.value = null
       user.value = null
       dbUser.value = null

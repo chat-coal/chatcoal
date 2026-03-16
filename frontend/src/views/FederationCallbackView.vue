@@ -16,6 +16,15 @@ onMounted(async () => {
     return
   }
 
+  // If opened from iOS ASWebAuthenticationSession, redirect to custom URL scheme
+  // so the native app can intercept the token. The browser session will close automatically.
+  const isMobileCallback = /\b(iPhone|iPad|iPod)\b/.test(navigator.userAgent)
+    && !window.electronAPI
+  if (isMobileCallback) {
+    window.location.href = `chatcoal://federation/callback?token=${encodeURIComponent(token)}`
+    return
+  }
+
   try {
     await auth.loginWithFederationCallback(token)
     // Clean the token from the URL to prevent leakage via history/Referer.
@@ -24,7 +33,8 @@ onMounted(async () => {
     const dest = lastChannel && lastChannel.startsWith('/channels/') ? lastChannel : '/channels/@me'
     router.replace(dest)
   } catch (e) {
-    error.value = e?.response?.data?.error || e?.message || 'Federation login failed.'
+    if (import.meta.env.DEV) console.error('Federation callback error:', e)
+    error.value = 'Federation login failed. Please try again.'
   }
 })
 </script>

@@ -10,10 +10,21 @@ const api = axios.create({
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 429) {
       const toast = useToastStore()
       toast.add('Too many requests — please slow down and try again.', 'error')
+    }
+    // Retry once with a refreshed Firebase token on 401
+    const originalRequest = error.config
+    if (error.response?.status === 401 && !originalRequest._retried) {
+      const fedToken = sessionStorage.getItem('fed_token')
+      if (!fedToken && auth.currentUser) {
+        originalRequest._retried = true
+        const newToken = await auth.currentUser.getIdToken(true)
+        originalRequest.headers.Authorization = `Bearer ${newToken}`
+        return api(originalRequest)
+      }
     }
     return Promise.reject(error)
   },
@@ -21,7 +32,7 @@ api.interceptors.response.use(
 
 api.interceptors.request.use(async (config) => {
   // Federation session tokens take priority over Firebase tokens.
-  const fedToken = localStorage.getItem('fed_token')
+  const fedToken = sessionStorage.getItem('fed_token')
   if (fedToken) {
     config.headers.Authorization = `Bearer ${fedToken}`
     return config

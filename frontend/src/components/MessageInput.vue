@@ -7,6 +7,7 @@ import { useDMsStore } from '@/stores/dms'
 import { useAuthStore } from '@/stores/auth'
 import { useForumStore } from '@/stores/forum'
 import { sendTyping, sendDMTyping } from '@/services/websocket.service'
+import { useToastStore } from '@/stores/toast'
 import GifPicker from './GifPicker.vue'
 
 const props = defineProps({
@@ -29,6 +30,7 @@ const emit = defineEmits(['cancel-reply'])
 const channelsStore = useChannelsStore()
 const serversStore = useServersStore()
 const messagesStore = useMessagesStore()
+const toastStore = useToastStore()
 const dmsStore = useDMsStore()
 const authStore = useAuthStore()
 const forumStore = useForumStore()
@@ -70,7 +72,7 @@ function onFileSelected(e) {
   const file = e.target.files?.[0]
   if (!file) return
   if (file.size > 25 * 1024 * 1024) {
-    alert('File must be under 25MB')
+    toastStore.add('File must be under 25MB', 'error')
     return
   }
   selectedFile.value = file

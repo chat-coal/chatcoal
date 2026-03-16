@@ -35,7 +35,7 @@ export default {
     icon: 'build/icon.icns',
   },
   linux: {
-    target: ['AppImage'],
+    target: ['AppImage', 'deb'],
     category: 'Network;Chat',
     icon: 'build/icon.icns',
   },

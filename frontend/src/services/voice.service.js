@@ -62,7 +62,7 @@ export async function joinChannel(channelId, serverId) {
       send({ type: 'voice_join', channel_id: channelId, server_id: serverId })
       return
     } catch {
-      console.warn('LiveKit unavailable, falling back to P2P')
+      if (import.meta.env.DEV) console.warn('LiveKit unavailable, falling back to P2P')
       room = null
     }
   }
@@ -71,7 +71,7 @@ export async function joinChannel(channelId, serverId) {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
   } catch {
-    console.error('Failed to get microphone access')
+    if (import.meta.env.DEV) console.error('Failed to get microphone access')
     voiceStore.isJoining = false
     return
   }
