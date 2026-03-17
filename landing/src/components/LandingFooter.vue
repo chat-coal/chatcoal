@@ -75,6 +75,7 @@ const linkGroups = [
     label: 'Product',
     links: [
       { label: 'Features', href: '/#features' },
+      { label: 'Download', href: '/download' },
       { label: 'Open App', href: 'https://app.chatcoal.com' },
     ],
   },

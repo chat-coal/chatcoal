@@ -5,7 +5,7 @@
   >
     <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
       <!-- Logo -->
-      <a href="#" class="flex items-center gap-2.5 group">
+      <RouterLink to="/" class="flex items-center gap-2.5 group">
         <div class="w-8 h-8 relative">
           <svg viewBox="0 0 1024 1024" fill="none" class="w-full h-full">
             <path d="M416 87.4376C416 48.1063 466.688 27.9491 497.216 55.1681C591.2 139.015 645.824 323.113 581.216 462.784L577.376 470.562L577.952 470.695C607.952 476.64 635.696 451.476 688.496 373.573L695.216 363.562C699.11 357.724 704.399 352.802 710.669 349.177C716.939 345.552 724.022 343.322 731.368 342.66C738.714 341.999 746.125 342.923 753.025 345.362C759.925 347.802 766.129 351.689 771.152 356.724C835.184 420.861 896 552.353 896 636.96C896 827.583 723.632 981.333 512 981.333C459.866 981.333 410.116 972.003 364.737 955.089C323.716 970.987 278.893 981.333 237.565 981.333C215.984 981.333 205.821 963.398 219.66 945.112C230.873 931.204 244.349 912.826 256.19 893.798C177.574 830.801 128 739.167 128 636.915C128 536.263 177.056 426.134 254.336 355.293L283.376 328.968C294.944 318.42 304.208 309.75 313.04 301.079C381.68 233.501 416 170.391 416 87.4376Z" fill="url(#navGrad)"/>
@@ -20,15 +20,16 @@
         <span class="font-display font-700 text-lg tracking-tight text-white group-hover:text-ember-glow transition-colors">
           chatcoal
         </span>
-      </a>
+      </RouterLink>
 
       <!-- Nav links -->
       <div class="hidden md:flex items-center gap-8">
-        <a v-for="link in navLinks" :key="link.label"
-           :href="link.href"
+        <component v-for="link in navLinks" :key="link.label"
+           :is="link.href.startsWith('/') ? 'RouterLink' : 'a'"
+           v-bind="link.href.startsWith('/') ? { to: link.href } : { href: link.href }"
            class="text-sm text-white/50 hover:text-white/90 transition-colors font-medium tracking-wide">
           {{ link.label }}
-        </a>
+        </component>
       </div>
 
       <!-- CTA -->
@@ -46,8 +47,9 @@ import { ref, onMounted, onUnmounted } from 'vue'
 const scrolled = ref(false)
 
 const navLinks = [
-  { label: 'Features', href: '#features' },
-  { label: 'Open Source', href: '#open-source' },
+  { label: 'Features', href: '/#features' },
+  { label: 'Download', href: '/download' },
+  { label: 'Open Source', href: '/#open-source' },
 ]
 
 function handleScroll() {
