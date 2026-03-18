@@ -10,6 +10,7 @@ const authStore = useAuthStore()
 const toastStore = useToastStore()
 
 const loading = ref(true)
+const federationAvailable = ref(false)
 const defaultPolicy = ref('open')
 const instances = ref([])
 const saving = ref(false)
@@ -23,6 +24,12 @@ const adding = ref(false)
 // Confirm remove
 const removingDomain = ref(null)
 
+// Reports
+const reports = ref([])
+const reportsLoading = ref(false)
+const reportsFilter = ref('')
+const reportsHasMore = ref(true)
+
 onMounted(async () => {
   if (!authStore.dbUser?.is_site_admin) {
     router.replace('/channels/@me')
@@ -32,12 +39,54 @@ onMounted(async () => {
     const data = await api.getFederationPolicy()
     defaultPolicy.value = data.default_policy
     instances.value = data.instances || []
+    federationAvailable.value = true
   } catch {
-    toastStore.add('Failed to load federation policy')
+    // Federation not configured — skip section silently
   } finally {
     loading.value = false
   }
+  loadReports()
 })
+
+async function loadReports(append = false) {
+  reportsLoading.value = true
+  try {
+    const before = append && reports.value.length ? reports.value[reports.value.length - 1].id : null
+    const data = await api.getReports(reportsFilter.value, before)
+    if (append) {
+      reports.value = [...reports.value, ...data]
+    } else {
+      reports.value = data
+    }
+    reportsHasMore.value = data.length >= 50
+  } catch {
+    toastStore.add('Failed to load reports')
+  } finally {
+    reportsLoading.value = false
+  }
+}
+
+function changeReportsFilter(status) {
+  reportsFilter.value = status
+  loadReports()
+}
+
+async function setReportStatus(reportId, status) {
+  try {
+    const updated = await api.updateReportStatus(reportId, status)
+    const idx = reports.value.findIndex(r => r.id === reportId)
+    if (idx >= 0) reports.value[idx] = { ...reports.value[idx], status: updated.status }
+  } catch {
+    toastStore.add('Failed to update report')
+  }
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return ''
+  return new Date(dateStr).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+const targetTypeLabels = { user: 'User', message: 'Message', dm_message: 'DM Message', forum_post: 'Forum Post' }
 
 async function saveDefaultPolicy() {
   saving.value = true
@@ -95,8 +144,8 @@ function goBack() {
         </svg>
         Back to app
       </button>
-      <h1 class="text-2xl font-bold mb-1">Federation Admin</h1>
-      <p class="text-[var(--text-3)] text-sm">Manage which instances can federate with yours.</p>
+      <h1 class="text-2xl font-bold mb-1">Admin</h1>
+      <p class="text-[var(--text-3)] text-sm">Content moderation{{ federationAvailable ? ' and federation policy' : '' }}.</p>
     </div>
 
     <div v-if="loading" class="max-w-3xl mx-auto px-6 py-12 text-center">
@@ -104,8 +153,8 @@ function goBack() {
     </div>
 
     <div v-else class="max-w-3xl mx-auto px-6 pb-12 space-y-8">
-      <!-- Default Policy -->
-      <section class="bg-[var(--surface)] border border-[var(--surface-border)] rounded-2xl p-6">
+      <!-- Default Policy (federation only) -->
+      <section v-if="federationAvailable" class="bg-[var(--surface)] border border-[var(--surface-border)] rounded-2xl p-6">
         <h2 class="text-lg font-semibold mb-1">Default Policy</h2>
         <p class="text-[var(--text-3)] text-sm mb-4">Applies to instances without an explicit rule below.</p>
         <div class="flex items-center gap-3">
@@ -131,8 +180,8 @@ function goBack() {
         </div>
       </section>
 
-      <!-- Instance Rules -->
-      <section class="bg-[var(--surface)] border border-[var(--surface-border)] rounded-2xl p-6">
+      <!-- Instance Rules (federation only) -->
+      <section v-if="federationAvailable" class="bg-[var(--surface)] border border-[var(--surface-border)] rounded-2xl p-6">
         <h2 class="text-lg font-semibold mb-1">Instance Rules</h2>
         <p class="text-[var(--text-3)] text-sm mb-5">Explicit allow/block overrides the default policy.</p>
 
@@ -207,6 +256,94 @@ function goBack() {
                 class="text-xs text-[var(--text-4)] hover:text-[var(--text-2)] px-2 py-1 cursor-pointer transition-colors duration-150"
               >Cancel</button>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Reports -->
+      <section class="bg-[var(--surface)] border border-[var(--surface-border)] rounded-2xl p-6">
+        <h2 class="text-lg font-semibold mb-1">Reports</h2>
+        <p class="text-[var(--text-3)] text-sm mb-5">User-submitted reports for review.</p>
+
+        <!-- Filter tabs -->
+        <div class="flex items-center gap-2 mb-5">
+          <button
+            v-for="f in [{ label: 'All', value: '' }, { label: 'Pending', value: 'pending' }, { label: 'Reviewed', value: 'reviewed' }, { label: 'Dismissed', value: 'dismissed' }]"
+            :key="f.value"
+            @click="changeReportsFilter(f.value)"
+            class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer"
+            :class="reportsFilter === f.value
+              ? 'bg-[#E8521A]/15 text-[#E8521A] border border-[#E8521A]/30'
+              : 'bg-[var(--surface-2)] text-[var(--text-3)] border border-[var(--surface-border)] hover:border-[var(--text-4)]'"
+          >{{ f.label }}</button>
+        </div>
+
+        <!-- Reports list -->
+        <div v-if="reportsLoading && !reports.length" class="text-center py-8">
+          <div class="inline-block w-5 h-5 border-2 border-[var(--text-4)] border-t-[#E8521A] rounded-full animate-spin"></div>
+        </div>
+        <div v-else-if="reports.length === 0" class="text-[var(--text-4)] text-sm text-center py-6">
+          No reports found.
+        </div>
+        <div v-else class="space-y-3">
+          <div
+            v-for="report in reports"
+            :key="report.id"
+            class="bg-[var(--surface-2)] border border-[var(--surface-border)] rounded-xl p-4"
+          >
+            <div class="flex items-start gap-3">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span
+                    class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase"
+                    :class="{
+                      'bg-amber-500/15 text-amber-400': report.status === 'pending',
+                      'bg-emerald-500/15 text-emerald-400': report.status === 'reviewed',
+                      'bg-[var(--surface-3)] text-[var(--text-4)]': report.status === 'dismissed',
+                    }"
+                  >{{ report.status }}</span>
+                  <span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[var(--surface-3)] text-[var(--text-3)]">
+                    {{ targetTypeLabels[report.target_type] || report.target_type }}
+                  </span>
+                  <span class="text-[var(--text-4)] text-[11px]">{{ formatDate(report.created_at) }}</span>
+                </div>
+                <p class="text-sm text-[var(--text-2)] mb-1">{{ report.reason }}</p>
+                <div class="flex items-center gap-2 text-[11px] text-[var(--text-4)]">
+                  <span>Reported by: <span class="text-[var(--text-3)] font-medium">{{ report.reporter?.display_name || 'Unknown' }}</span></span>
+                  <span>&middot;</span>
+                  <span>Target ID: <span class="font-mono text-[var(--text-3)]">{{ report.target_id }}</span></span>
+                </div>
+              </div>
+
+              <!-- Actions -->
+              <div v-if="report.status === 'pending'" class="flex items-center gap-1.5 shrink-0">
+                <button
+                  @click="setReportStatus(report.id, 'reviewed')"
+                  class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-all duration-150 cursor-pointer"
+                  title="Mark as reviewed"
+                >Review</button>
+                <button
+                  @click="setReportStatus(report.id, 'dismissed')"
+                  class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[var(--text-4)] bg-[var(--surface-3)] hover:bg-[var(--surface-border)] transition-all duration-150 cursor-pointer"
+                  title="Dismiss"
+                >Dismiss</button>
+              </div>
+              <div v-else class="shrink-0">
+                <button
+                  @click="setReportStatus(report.id, 'pending')"
+                  class="px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-4)] hover:text-[var(--text-3)] bg-[var(--surface-3)] hover:bg-[var(--surface-border)] transition-all duration-150 cursor-pointer"
+                >Reopen</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Load more -->
+          <div v-if="reportsHasMore" class="text-center pt-2">
+            <button
+              @click="loadReports(true)"
+              :disabled="reportsLoading"
+              class="text-[#E8521A] hover:text-[#D44818] text-sm font-semibold cursor-pointer transition-colors duration-150 disabled:opacity-50"
+            >{{ reportsLoading ? 'Loading...' : 'Load more' }}</button>
           </div>
         </div>
       </section>

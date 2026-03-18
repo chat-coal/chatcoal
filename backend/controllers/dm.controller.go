@@ -96,6 +96,10 @@ func CreateOrGetDMChannel(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusGone).JSON(fiber.Map{"error": "This user no longer exists"})
 	}
 
+	if services.IsEitherBlocked(user.ID, body.UserID) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Cannot open DM with this user"})
+	}
+
 	channel, err := services.GetOrCreateDMChannel(user.ID, body.UserID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create DM channel"})
@@ -144,7 +148,7 @@ func SendDMMessage(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "Sending too fast. Verify your email to remove this limit"})
 	}
 
-	// Block sending to deleted users
+	// Block sending to deleted or blocked users
 	if dmChannel, _ := services.GetDMChannelByID(dmChannelID); dmChannel != nil {
 		otherID := dmChannel.User1ID
 		if otherID == user.ID {
@@ -152,6 +156,9 @@ func SendDMMessage(c *fiber.Ctx) error {
 		}
 		if services.IsUserDeleted(otherID) {
 			return c.Status(fiber.StatusGone).JSON(fiber.Map{"error": "This user no longer exists"})
+		}
+		if services.IsEitherBlocked(user.ID, otherID) {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Cannot send messages to this user"})
 		}
 	}
 

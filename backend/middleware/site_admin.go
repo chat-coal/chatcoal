@@ -7,25 +7,19 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-var siteAdminUIDs map[string]bool
-
-func init() {
-	siteAdminUIDs = make(map[string]bool)
+// IsSiteAdmin returns true if the given Firebase UID is in the SITE_ADMIN_UIDS list.
+// Reads the env var on every call so it works even when godotenv loads after package init.
+func IsSiteAdmin(uid string) bool {
 	raw := os.Getenv("SITE_ADMIN_UIDS")
 	if raw == "" {
-		return
+		return false
 	}
-	for _, uid := range strings.Split(raw, ",") {
-		uid = strings.TrimSpace(uid)
-		if uid != "" {
-			siteAdminUIDs[uid] = true
+	for _, admin := range strings.Split(raw, ",") {
+		if strings.TrimSpace(admin) == uid {
+			return true
 		}
 	}
-}
-
-// IsSiteAdmin returns true if the given Firebase UID is in the SITE_ADMIN_UIDS list.
-func IsSiteAdmin(uid string) bool {
-	return siteAdminUIDs[uid]
+	return false
 }
 
 // SiteAdminMiddleware returns 403 if the authenticated user is not a site admin.

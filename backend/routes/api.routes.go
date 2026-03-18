@@ -85,9 +85,16 @@ func SetupRoutes(app *fiber.App) {
 	messages.Put("/:id/pin", controllers.PinMessageHandler)
 	messages.Delete("/:id/pin", controllers.UnpinMessageHandler)
 
-	// User profiles
+	// User profiles, blocks
 	users := api.Group("/users", middleware.UnifiedAuthMiddleware(), perUser)
+	users.Get("/blocks", controllers.GetBlockedUsers)
 	users.Get("/:id", controllers.GetUserProfile)
+	users.Put("/:id/block", controllers.BlockUser)
+	users.Delete("/:id/block", controllers.UnblockUser)
+
+	// Reports
+	reports := api.Group("/reports", middleware.UnifiedAuthMiddleware(), perUser)
+	reports.Post("/", controllers.CreateReport)
 
 	// Forum post routes
 	forumPosts := api.Group("/forum-posts", middleware.UnifiedAuthMiddleware(), perUser)
@@ -126,6 +133,8 @@ func SetupRoutes(app *fiber.App) {
 	admin.Put("/federation/policy", controllers.UpdateFederationPolicy)
 	admin.Post("/federation/instances", controllers.AddInstancePolicy)
 	admin.Delete("/federation/instances/:domain", controllers.RemoveInstancePolicy)
+	admin.Get("/reports", controllers.GetReports)
+	admin.Patch("/reports/:id", controllers.UpdateReportStatus)
 
 	// Giphy proxy (keeps API key server-side)
 	giphy := api.Group("/giphy", middleware.UnifiedAuthMiddleware(), middleware.PerUserRateLimiter(30, 1*time.Minute))

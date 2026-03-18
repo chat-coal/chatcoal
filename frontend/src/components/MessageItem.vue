@@ -6,6 +6,7 @@ import { useMessagesStore } from '@/stores/messages'
 import { useDMsStore } from '@/stores/dms'
 import { useForumStore } from '@/stores/forum'
 import { useToastStore } from '@/stores/toast'
+import { useBlocksStore } from '@/stores/blocks'
 import api, { API_URL } from '@/services/api.service'
 import { getAvatarColor, getDefaultAvatarStyle, resolveFileUrl, cssBackgroundUrl } from '@/utils/avatar'
 import { linkify } from '@/utils/linkify'
@@ -29,12 +30,16 @@ const messagesStore = useMessagesStore()
 const dmsStore = useDMsStore()
 const forumStore = useForumStore()
 const toastStore = useToastStore()
+const blocksStore = useBlocksStore()
 const editing = ref(false)
 const editContent = ref('')
 const editInput = ref(null)
 const hovering = ref(false)
 const showEmojiPicker = ref(false)
 const showDeleteConfirm = ref(false)
+const showReportModal = ref(false)
+const reportReason = ref('')
+const showBlockedContent = ref(false)
 const profileAnchor = ref(null)
 const showProfile = ref(false)
 
@@ -217,6 +222,20 @@ const embeds = computed(() => {
   return props.message.embeds
 })
 
+const isBlockedAuthor = computed(() => blocksStore.isBlocked(props.message.author_id))
+
+async function submitMessageReport() {
+  try {
+    const targetType = props.mode === 'dm' ? 'dm_message' : 'message'
+    await api.createReport(targetType, props.message.id, reportReason.value)
+    toastStore.add('Report submitted', 'success')
+  } catch (e) {
+    toastStore.add(e.response?.data?.error || 'Failed to submit report')
+  }
+  showReportModal.value = false
+  reportReason.value = ''
+}
+
 const isAuthor = () => authStore.dbUser?.id === props.message.author_id
 const canDelete = () => isAuthor() || (props.mode === 'server' && serversStore.canManageMessages)
 </script>
@@ -237,6 +256,20 @@ const canDelete = () => isAuthor() || (props.mode === 'server' && serversStore.c
       {{ message.content }}
     </p>
     <span class="text-[var(--text-4)] text-[11px] shrink-0">{{ formatTime(message.created_at) }}</span>
+  </div>
+
+  <!-- Blocked user placeholder -->
+  <div
+    v-else-if="isBlockedAuthor && !showBlockedContent"
+    class="flex items-center gap-2 py-1 px-3 -mx-3"
+  >
+    <span class="text-[var(--text-4)] text-xs italic">Blocked message</span>
+    <button
+      @click="showBlockedContent = true"
+      class="text-[var(--text-4)] hover:text-[var(--text-3)] text-[11px] cursor-pointer underline"
+    >
+      Show
+    </button>
   </div>
 
   <!-- Regular user message -->
@@ -520,6 +553,16 @@ const canDelete = () => isAuthor() || (props.mode === 'server' && serversStore.c
           <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
         </svg>
       </button>
+      <button
+        v-if="!isAuthor()"
+        @click="showReportModal = true"
+        class="p-1.5 text-[var(--text-4)] hover:text-red-400 hover:bg-red-400/10 rounded-lg cursor-pointer transition-colors duration-100"
+        title="Report"
+      >
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 3v1.5M3 21v-6m0 0 2.77-.693a9 9 0 0 1 6.208.682l.108.054a9 9 0 0 0 6.086.71l3.114-.732a48.524 48.524 0 0 1-.005-10.499l-3.11.732a9 9 0 0 1-6.085-.711l-.108-.054a9 9 0 0 0-6.208-.682L3 4.5M3 15V4.5" />
+        </svg>
+      </button>
     </div>
   </div>
 
@@ -540,6 +583,34 @@ const canDelete = () => isAuthor() || (props.mode === 'server' && serversStore.c
             class="bg-[#E8521A] text-white px-5 py-2.5 rounded-xl hover:bg-[#D44818] cursor-pointer font-semibold shadow-lg shadow-[#E8521A]/15 transition-all duration-200"
           >
             Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- Report message modal -->
+  <Teleport to="body">
+    <div v-if="showReportModal" class="fixed inset-0 bg-[var(--backdrop)] backdrop-blur-sm flex items-center justify-center z-[60]" @click.self="showReportModal = false">
+      <div class="bg-[var(--modal-bg)] rounded-2xl p-7 w-full max-w-sm shadow-2xl shadow-black/10 animate-scale-in border border-[var(--modal-border)]">
+        <h2 class="font-display text-xl font-bold text-[var(--text-1)] mb-2">Report Message</h2>
+        <p class="text-[var(--text-3)] text-sm mb-4">Why are you reporting this message?</p>
+        <textarea
+          v-model="reportReason"
+          placeholder="Describe the issue..."
+          rows="3"
+          class="w-full bg-[var(--card)] text-[var(--text-1)] px-3 py-2.5 rounded-xl border border-[var(--surface-border)] text-sm resize-none mb-4"
+        ></textarea>
+        <div class="flex justify-end gap-3">
+          <button @click="showReportModal = false; reportReason = ''" class="text-[var(--text-3)] hover:text-[var(--text-1)] px-4 py-2.5 rounded-xl cursor-pointer font-medium transition-colors duration-150">
+            Cancel
+          </button>
+          <button
+            @click="submitMessageReport"
+            :disabled="!reportReason.trim()"
+            class="bg-[#E8521A] text-white px-5 py-2.5 rounded-xl hover:bg-[#D44818] cursor-pointer font-semibold shadow-lg shadow-[#E8521A]/15 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Submit Report
           </button>
         </div>
       </div>

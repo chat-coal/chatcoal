@@ -431,4 +431,36 @@ export default {
     const res = await api.post(`/api/forum-posts/${postId}/messages`, body)
     return res.data
   },
+
+  // Blocks
+  async getBlockedUsers() {
+    const res = await api.get('/api/users/blocks')
+    return res.data
+  },
+  async blockUser(userId) {
+    const res = await api.put(`/api/users/${userId}/block`)
+    return res.data
+  },
+  async unblockUser(userId) {
+    await api.delete(`/api/users/${userId}/block`)
+  },
+
+  // Reports
+  async createReport(targetType, targetId, reason) {
+    const res = await api.post('/api/reports', { target_type: targetType, target_id: targetId, reason })
+    return res.data
+  },
+
+  // Admin — Reports
+  async getReports(status = '', before = null) {
+    const params = {}
+    if (status) params.status = status
+    if (before) params.before = before
+    const res = await api.get('/api/admin/reports', { params })
+    return res.data
+  },
+  async updateReportStatus(reportId, status) {
+    const res = await api.patch(`/api/admin/reports/${reportId}`, { status })
+    return res.data
+  },
 }

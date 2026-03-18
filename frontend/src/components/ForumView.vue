@@ -190,6 +190,29 @@ function formatTime(dateStr) {
         </button>
       </div>
 
+      <!-- Loading skeleton -->
+      <div v-else-if="forumStore.loading" class="space-y-2">
+        <div v-for="i in 5" :key="i" class="p-4 rounded-xl bg-[var(--card)] border border-[var(--surface-border)] animate-pulse">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <div class="h-4 rounded bg-[var(--surface-3)] mb-2" :style="{ width: [65, 80, 50, 72, 58][i - 1] + '%' }"></div>
+              <div class="space-y-1.5 mb-3">
+                <div class="h-3 rounded bg-[var(--surface-3)] opacity-60" :style="{ width: [90, 75, 95, 85, 70][i - 1] + '%' }"></div>
+                <div class="h-3 rounded bg-[var(--surface-3)] opacity-40" :style="{ width: [60, 50, 70, 45, 55][i - 1] + '%' }"></div>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="flex items-center gap-1.5">
+                  <div class="w-4 h-4 rounded-full bg-[var(--surface-3)]"></div>
+                  <div class="h-2.5 w-16 rounded bg-[var(--surface-3)] opacity-50"></div>
+                </div>
+                <div class="h-2.5 w-12 rounded bg-[var(--surface-3)] opacity-50"></div>
+                <div class="h-2.5 w-24 rounded bg-[var(--surface-3)] opacity-40"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div v-else-if="!forumStore.loading" class="text-center mt-16">
         <div class="w-16 h-16 rounded-2xl bg-[#E8521A]/10 flex items-center justify-center mx-auto mb-4">
           <svg class="w-7 h-7 text-[#E8521A]" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">

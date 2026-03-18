@@ -1,9 +1,11 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useServersStore } from '@/stores/servers'
 import { useDMsStore } from '@/stores/dms'
+import { useBlocksStore } from '@/stores/blocks'
+import { useToastStore } from '@/stores/toast'
 import api from '@/services/api.service'
 import { getAvatarColor, getDefaultAvatarStyle, resolveFileUrl, cssBackgroundUrl } from '@/utils/avatar'
 
@@ -19,6 +21,13 @@ const router = useRouter()
 const authStore = useAuthStore()
 const serversStore = useServersStore()
 const dmsStore = useDMsStore()
+const blocksStore = useBlocksStore()
+const toastStore = useToastStore()
+
+const showReportModal = ref(false)
+const showBlockConfirm = ref(false)
+const reportReason = ref('')
+const isBlockedUser = computed(() => blocksStore.isBlocked(props.userId))
 
 const profile = ref(null)
 const loading = ref(true)
@@ -68,6 +77,7 @@ function positionPopover() {
 }
 
 function handleOutsideClick(e) {
+  if (showReportModal.value || showBlockConfirm.value) return
   if (popoverEl.value && !popoverEl.value.contains(e.target)) {
     emit('close')
   }
@@ -83,6 +93,31 @@ const roleColors = {
 function formatJoined(dateStr) {
   if (!dateStr) return ''
   return new Date(dateStr).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+async function toggleBlock() {
+  try {
+    if (isBlockedUser.value) {
+      await blocksStore.unblockUser(props.userId)
+      toastStore.add('User unblocked', 'success')
+    } else {
+      await blocksStore.blockUser(props.userId)
+      toastStore.add('User blocked', 'success')
+    }
+  } catch (e) {
+    toastStore.add(e.response?.data?.error || 'Failed to update block')
+  }
+}
+
+async function submitReport() {
+  try {
+    await api.createReport('user', props.userId, reportReason.value)
+    toastStore.add('Report submitted', 'success')
+  } catch (e) {
+    toastStore.add(e.response?.data?.error || 'Failed to submit report')
+  }
+  showReportModal.value = false
+  reportReason.value = ''
 }
 
 async function startDM() {
@@ -168,8 +203,85 @@ async function startDM() {
           >
             Send Message
           </button>
+
+          <!-- Block / Unblock -->
+          <button
+            v-if="userId !== authStore.dbUser?.id"
+            @click="showBlockConfirm = true"
+            class="w-full mt-2 text-xs font-semibold py-2 rounded-xl cursor-pointer transition-colors duration-150"
+            :class="isBlockedUser
+              ? 'bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--text-2)]'
+              : 'bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-red-400 hover:text-red-300'"
+          >
+            {{ isBlockedUser ? 'Unblock' : 'Block' }}
+          </button>
+
+          <!-- Report -->
+          <button
+            v-if="userId !== authStore.dbUser?.id"
+            @click="showReportModal = true"
+            class="w-full mt-1.5 text-[var(--text-4)] hover:text-red-400 text-[11px] cursor-pointer transition-colors duration-150"
+          >
+            Report User
+          </button>
         </div>
       </template>
+    </div>
+  </Teleport>
+
+  <!-- Block confirmation modal -->
+  <Teleport to="body">
+    <div v-if="showBlockConfirm" class="fixed inset-0 bg-[var(--backdrop)] backdrop-blur-sm flex items-center justify-center z-[80]" @click.self="showBlockConfirm = false">
+      <div class="bg-[var(--modal-bg)] rounded-2xl p-7 w-full max-w-sm shadow-2xl shadow-black/10 animate-scale-in border border-[var(--modal-border)]">
+        <h2 class="font-display text-xl font-bold text-[var(--text-1)] mb-2">{{ isBlockedUser ? 'Unblock User' : 'Block User' }}</h2>
+        <p class="text-[var(--text-3)] text-sm mb-5">
+          {{ isBlockedUser
+            ? 'They will be able to message you again.'
+            : "They won\u2019t be able to message you, and you won\u2019t see their messages." }}
+        </p>
+        <div class="flex justify-end gap-3">
+          <button @click="showBlockConfirm = false" class="text-[var(--text-3)] hover:text-[var(--text-1)] px-4 py-2.5 rounded-xl cursor-pointer font-medium transition-colors duration-150">
+            Cancel
+          </button>
+          <button
+            @click="toggleBlock(); showBlockConfirm = false"
+            class="px-5 py-2.5 rounded-xl cursor-pointer font-semibold transition-all duration-200"
+            :class="isBlockedUser
+              ? 'bg-[var(--surface-3)] text-[var(--text-1)] hover:bg-[var(--surface-2)]'
+              : 'bg-red-500 text-white hover:bg-red-600 shadow-lg shadow-red-500/15'"
+          >
+            {{ isBlockedUser ? 'Unblock' : 'Block' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- Report modal -->
+  <Teleport to="body">
+    <div v-if="showReportModal" class="fixed inset-0 bg-[var(--backdrop)] backdrop-blur-sm flex items-center justify-center z-[80]" @click.self="showReportModal = false">
+      <div class="bg-[var(--modal-bg)] rounded-2xl p-7 w-full max-w-sm shadow-2xl shadow-black/10 animate-scale-in border border-[var(--modal-border)]">
+        <h2 class="font-display text-xl font-bold text-[var(--text-1)] mb-2">Report User</h2>
+        <p class="text-[var(--text-3)] text-sm mb-4">Why are you reporting this user?</p>
+        <textarea
+          v-model="reportReason"
+          placeholder="Describe the issue..."
+          rows="3"
+          class="w-full bg-[var(--card)] text-[var(--text-1)] px-3 py-2.5 rounded-xl border border-[var(--surface-border)] text-sm resize-none mb-4"
+        ></textarea>
+        <div class="flex justify-end gap-3">
+          <button @click="showReportModal = false; reportReason = ''" class="text-[var(--text-3)] hover:text-[var(--text-1)] px-4 py-2.5 rounded-xl cursor-pointer font-medium transition-colors duration-150">
+            Cancel
+          </button>
+          <button
+            @click="submitReport"
+            :disabled="!reportReason.trim()"
+            class="bg-[#E8521A] text-white px-5 py-2.5 rounded-xl hover:bg-[#D44818] cursor-pointer font-semibold shadow-lg shadow-[#E8521A]/15 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Submit Report
+          </button>
+        </div>
+      </div>
     </div>
   </Teleport>
 </template>

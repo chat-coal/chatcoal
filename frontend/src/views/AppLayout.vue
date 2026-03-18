@@ -12,6 +12,7 @@ import { useTypingStore } from '@/stores/typing'
 import { useSearchStore } from '@/stores/search'
 import { useForumStore } from '@/stores/forum'
 import { useNotificationSettingsStore } from '@/stores/notificationSettings'
+import { useBlocksStore } from '@/stores/blocks'
 import { connect, disconnect, on } from '@/services/websocket.service'
 import { useVersionCheck } from '@/composables/useVersionCheck'
 import { cleanup as voiceCleanup } from '@/services/voice.service'
@@ -36,6 +37,7 @@ const typingStore = useTypingStore()
 const searchStore = useSearchStore()
 const forumStore = useForumStore()
 const notifStore = useNotificationSettingsStore()
+const blocksStore = useBlocksStore()
 
 const isElectron = !!window.electronAPI?.isElectron
 const showMembers = ref(true)
@@ -101,6 +103,7 @@ onMounted(async () => {
   await dmsStore.fetchDMChannels()
   await unreadStore.fetchUnreadCounts()
   await notifStore.fetchSettings()
+  blocksStore.fetchBlockedUsers()
 
   // Restore last visited location on fresh page load
   // Either hydrate from current URL params, or fall back to localStorage
