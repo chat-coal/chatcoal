@@ -22,8 +22,10 @@ func GenerateLiveKitToken(userID models.Snowflake, channelID models.Snowflake, d
 
 	at := auth.NewAccessToken(apiKey, apiSecret)
 	grant := &auth.VideoGrant{
-		RoomJoin: true,
-		Room:     fmt.Sprintf("channel_%d", channelID),
+		RoomJoin:     true,
+		Room:         fmt.Sprintf("channel_%d", channelID),
+		CanPublish:   boolPtr(true),
+		CanSubscribe: boolPtr(true),
 	}
 	at.SetVideoGrant(grant).
 		SetIdentity(fmt.Sprintf("%d", userID)).
@@ -32,6 +34,8 @@ func GenerateLiveKitToken(userID models.Snowflake, channelID models.Snowflake, d
 
 	return at.ToJWT()
 }
+
+func boolPtr(b bool) *bool { return &b }
 
 // GetVoiceStats returns the number of active LiveKit rooms and total participants.
 func GetVoiceStats() (activeChannels, activeUsers int64, err error) {

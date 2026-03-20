@@ -122,6 +122,17 @@ func CreateDMMessage(content string, dmChannelID models.Snowflake, authorID mode
 	database.Database.Preload("Author").Preload("Reactions").First(&message, message.ID)
 
 	go IncrementUnreadForDM(dmChannelID, authorID)
+
+	// Send push notification to the other participant
+	go func() {
+		ch, err := GetDMChannelByID(dmChannelID)
+		if err != nil || ch == nil {
+			return
+		}
+		recipientID := GetOtherUserID(ch, authorID)
+		SendDMPush(recipientID, authorID, dmChannelID, content)
+	}()
+
 	return &message, nil
 }
 

@@ -127,6 +127,11 @@ func SetupRoutes(app *fiber.App) {
 	notifSettings.Get("/", controllers.GetNotificationSettings)
 	notifSettings.Put("/", controllers.UpdateNotificationSetting)
 
+	// Device tokens (push notifications)
+	deviceTokens := api.Group("/device-tokens", middleware.UnifiedAuthMiddleware(), perUser)
+	deviceTokens.Post("/", controllers.RegisterDeviceToken)
+	deviceTokens.Delete("/", controllers.UnregisterDeviceToken)
+
 	// Admin routes (site admins only)
 	admin := api.Group("/admin", middleware.UnifiedAuthMiddleware(), middleware.SiteAdminMiddleware(), perUser)
 	admin.Get("/federation/policy", controllers.GetFederationPolicy)

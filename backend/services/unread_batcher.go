@@ -132,4 +132,41 @@ func flushChannel(key channelKey, entry *pendingEntry) {
 	if err := database.Database.Exec(sql, args...).Error; err != nil {
 		log.Errorf("[unreadBatcher] flush failed for channel %d: %v", key.ChannelID, err)
 	}
+
+	// Send push notifications to offline members (async to not slow flush)
+	go func() {
+		// Get notify_mode for each user in this channel/server
+		notifyModes := GetNotifyModesForChannel(key.ChannelID, key.ServerID)
+
+		// Collect unique author IDs to determine "last author" for notification
+		// For simplicity, pick the first author (most messages) as the sender
+		var topAuthor models.Snowflake
+		topCount := 0
+		for aid, count := range entry.PerAuthor {
+			if count > topCount {
+				topAuthor = aid
+				topCount = count
+			}
+		}
+
+		// Use memberIDs excluding muted/nothing users (already computed above)
+		// Re-use the member list but include all (push service checks online status)
+		var pushTargets []models.Snowflake
+		for _, uid := range memberIDs {
+			if uid == topAuthor {
+				continue
+			}
+			mode := notifyModes[uid]
+			if mode == "nothing" || mutedUsers[uid] {
+				continue
+			}
+			pushTargets = append(pushTargets, uid)
+		}
+
+		if len(pushTargets) > 0 {
+			// We don't have message content in the batcher, so use a generic body.
+			// Pass nil mentionedIDs — mention pushes are sent directly from message creation.
+			SendChannelPush(key.ChannelID, key.ServerID, topAuthor, "New message", pushTargets, notifyModes, nil)
+		}
+	}()
 }

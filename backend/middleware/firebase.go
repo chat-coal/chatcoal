@@ -18,6 +18,7 @@ import (
 )
 
 var firebaseAuth *auth.Client
+var firebaseApp *firebase.App
 
 func InitFirebase() error {
 	ctx := context.Background()
@@ -29,6 +30,7 @@ func InitFirebase() error {
 		if err != nil {
 			return err
 		}
+		firebaseApp = app
 		firebaseAuth, err = app.Auth(ctx)
 		return err
 	}
@@ -43,8 +45,14 @@ func InitFirebase() error {
 	if err != nil {
 		return err
 	}
+	firebaseApp = app
 	firebaseAuth, err = app.Auth(ctx)
 	return err
+}
+
+// GetFirebaseApp returns the initialized Firebase app for use by other services (e.g. FCM).
+func GetFirebaseApp() *firebase.App {
+	return firebaseApp
 }
 
 func tokenCacheKey(token string) string {

@@ -151,6 +151,12 @@ func (c *Client) ReadPump() {
 		case "voice_leave":
 			GetHub().LeaveVoice(c)
 
+		case "screen_share_start":
+			GetHub().StartScreenShare(c)
+
+		case "screen_share_stop":
+			GetHub().StopScreenShare(c)
+
 		case "webrtc_offer", "webrtc_answer", "webrtc_ice":
 			c.forwardWebRTCSignal(event)
 

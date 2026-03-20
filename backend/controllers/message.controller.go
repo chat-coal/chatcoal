@@ -440,12 +440,15 @@ func GetUserProfile(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"id":           user.ID,
-		"display_name": user.DisplayName,
-		"avatar_url":   user.AvatarURL,
-		"status":       user.Status,
-		"created_at":   user.CreatedAt,
-		"deleted":      strings.HasPrefix(user.FirebaseUID, "deleted:"),
+		"id":            user.ID,
+		"display_name":  user.DisplayName,
+		"username":      user.Username,
+		"avatar_url":    user.AvatarURL,
+		"status":        user.Status,
+		"home_instance": user.HomeInstance,
+		"is_anonymous":  user.IsAnonymous,
+		"created_at":    user.CreatedAt,
+		"deleted":       strings.HasPrefix(user.FirebaseUID, "deleted:"),
 	})
 }
 

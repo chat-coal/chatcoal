@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"strconv"
 	"strings"
@@ -92,9 +93,22 @@ func main() {
 		log.Warn("Firebase init failed (auth will not work): ", err)
 	}
 
+	// Initialize FCM for push notifications
+	if app := middleware.GetFirebaseApp(); app != nil {
+		if client, err := app.Messaging(context.Background()); err == nil {
+			services.InitFCM(client)
+		} else {
+			log.Warn("FCM init failed (push notifications disabled): ", err)
+		}
+	}
+
 	if err := services.InitFederationKeys(); err != nil {
 		log.Warn("Federation key init failed (federation disabled): ", err)
 	}
+
+	// Wire up the Firebase user deletion function and start anonymous account cleanup.
+	services.DeleteFirebaseUserFunc = middleware.DeleteFirebaseUser
+	services.StartAnonCleanup()
 
 	// WebSocket hub
 	hub := ws.NewHub()
@@ -121,7 +135,12 @@ func main() {
 			voice.ActiveUsers = users
 		}
 
-		return c.JSON(metrics.Take(hub.ShardQueueDepths(), platform, voice))
+		var activeUsers int64
+		if onlineMap := cache.GetOnlineUserIDs(); onlineMap != nil {
+			activeUsers = int64(len(onlineMap))
+		}
+
+		return c.JSON(metrics.Take(hub.ShardQueueDepths(), platform, voice, activeUsers))
 	})
 
 	app.Get("/", func(c *fiber.Ctx) error {

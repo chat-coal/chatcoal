@@ -48,8 +48,9 @@ type Hub struct {
 	mu            sync.RWMutex
 	userClients   map[models.Snowflake]map[*Client]bool
 	offlineTimers map[models.Snowflake]*time.Timer
-	voiceStates   map[models.Snowflake]map[models.Snowflake]*Client // channelID -> userID -> Client
-	clientVoice   map[*Client]voiceInfo                             // client -> voice channel info
+	voiceStates    map[models.Snowflake]map[models.Snowflake]*Client // channelID -> userID -> Client
+	clientVoice    map[*Client]voiceInfo                             // client -> voice channel info
+	screenSharers  map[models.Snowflake]models.Snowflake            // channelID -> userID currently sharing
 
 	// Bounded worker pool for async tasks (presence broadcasts, voice cleanup, etc.)
 	workCh chan func()
@@ -82,6 +83,7 @@ func NewHub() *Hub {
 		offlineTimers: make(map[models.Snowflake]*time.Timer),
 		voiceStates:   make(map[models.Snowflake]map[models.Snowflake]*Client),
 		clientVoice:   make(map[*Client]voiceInfo),
+		screenSharers: make(map[models.Snowflake]models.Snowflake),
 		workCh:        make(chan func(), workQueueSize),
 	}
 	for i := range hub.shards {
@@ -323,10 +325,11 @@ func (h *Hub) JoinVoice(client *Client, channelID, serverID models.Snowflake) {
 	h.voiceStates[channelID][client.UserID] = client
 	h.clientVoice[client] = voiceInfo{ChannelID: channelID, ServerID: serverID}
 
+	// Write Redis BEFORE broadcasting so GET /voice-states returns
+	// up-to-date data when clients react to the broadcast.
+	cache.JoinVoiceChannel(serverID, channelID, client.UserID)
 	h.broadcastVoiceStateUpdate(serverID, channelID, client.UserID, "join")
 	h.mu.Unlock()
-
-	cache.JoinVoiceChannel(serverID, channelID, client.UserID)
 }
 
 func (h *Hub) LeaveVoice(client *Client) {
@@ -358,6 +361,8 @@ func (h *Hub) leaveVoiceLocked(client *Client) {
 	if !ok {
 		return
 	}
+	// Stop screen share if this user was sharing
+	h.stopScreenShareLocked(client)
 	delete(h.clientVoice, client)
 	if users, exists := h.voiceStates[info.ChannelID]; exists {
 		delete(users, client.UserID)
@@ -373,6 +378,59 @@ func (h *Hub) leaveVoiceLocked(client *Client) {
 func (h *Hub) broadcastVoiceStateUpdate(serverID, channelID, userID models.Snowflake, action string) {
 	payload, _ := json.Marshal(map[string]interface{}{
 		"type":      "voice_state_update",
+		"server_id": serverID,
+		"data": map[string]interface{}{
+			"channel_id": channelID,
+			"user_id":    userID,
+			"action":     action,
+		},
+	})
+	h.shardFor(serverID).inbox <- broadcastMsg{serverID: serverID, message: payload}
+	h.submit(func() { cache.PublishToServer(serverID, payload) })
+}
+
+// StartScreenShare marks a user as screen sharing in their current voice channel.
+func (h *Hub) StartScreenShare(client *Client) {
+	h.mu.Lock()
+	info, ok := h.clientVoice[client]
+	if !ok {
+		h.mu.Unlock()
+		return
+	}
+	// Only one screen sharer per channel
+	if _, taken := h.screenSharers[info.ChannelID]; taken {
+		h.mu.Unlock()
+		return
+	}
+	h.screenSharers[info.ChannelID] = client.UserID
+	h.broadcastScreenShareUpdate(info.ServerID, info.ChannelID, client.UserID, "start")
+	h.mu.Unlock()
+}
+
+// StopScreenShare removes a user's screen share in their current voice channel.
+func (h *Hub) StopScreenShare(client *Client) {
+	h.mu.Lock()
+	h.stopScreenShareLocked(client)
+	h.mu.Unlock()
+}
+
+// stopScreenShareLocked removes screen share state. Caller must hold h.mu.
+func (h *Hub) stopScreenShareLocked(client *Client) {
+	info, ok := h.clientVoice[client]
+	if !ok {
+		return
+	}
+	if sharer, exists := h.screenSharers[info.ChannelID]; exists && sharer == client.UserID {
+		delete(h.screenSharers, info.ChannelID)
+		h.broadcastScreenShareUpdate(info.ServerID, info.ChannelID, client.UserID, "stop")
+	}
+}
+
+// broadcastScreenShareUpdate sends a screen_share_update to all clients in the server.
+// Caller must hold h.mu.
+func (h *Hub) broadcastScreenShareUpdate(serverID, channelID, userID models.Snowflake, action string) {
+	payload, _ := json.Marshal(map[string]interface{}{
+		"type":      "screen_share_update",
 		"server_id": serverID,
 		"data": map[string]interface{}{
 			"channel_id": channelID,

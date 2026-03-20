@@ -36,6 +36,12 @@ type VoiceSnapshot struct {
 	ActiveUsers    int64 `json:"active_users"`
 }
 
+type ProcessSnapshot struct {
+	Goroutines int    `json:"goroutines"`
+	HeapMB     uint64 `json:"heap_mb"`
+	SysMB      uint64 `json:"sys_mb"`
+}
+
 type Snapshot struct {
 	WSConnections         int64            `json:"ws_connections"`
 	WSConnectionsRejected int64            `json:"ws_connections_rejected_total"`
@@ -45,6 +51,8 @@ type Snapshot struct {
 	CacheMisses           CacheSnapshot    `json:"cache_misses"`
 	Platform              PlatformSnapshot `json:"platform"`
 	Voice                 VoiceSnapshot    `json:"voice"`
+	ActiveUsers           int64            `json:"active_users"`
+	Process               ProcessSnapshot  `json:"process"`
 }
 
 type TimestampedSnapshot struct {
@@ -52,7 +60,7 @@ type TimestampedSnapshot struct {
 	Snapshot  Snapshot `json:"snapshot"`
 }
 
-const ringSize = 120
+const ringSize = 17280 // 24 hours at 5-second intervals
 
 type Store struct {
 	mu      sync.RWMutex

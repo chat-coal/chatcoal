@@ -72,7 +72,7 @@
 import LandingNav from '../components/LandingNav.vue'
 import LandingFooter from '../components/LandingFooter.vue'
 
-const VERSION = '0.1.14'
+const VERSION = '0.1.16'
 const RELEASE_BASE = `https://github.com/chat-coal/chatcoal/releases/download/${VERSION}`
 
 const platforms = [

@@ -30,9 +30,10 @@ func UpdateNotificationSetting(c *fiber.Ctx) error {
 	}
 
 	var body struct {
-		TargetType string          `json:"target_type" validate:"required,oneof=server channel"`
+		TargetType string           `json:"target_type" validate:"required,oneof=server channel"`
 		TargetID   models.Snowflake `json:"target_id" validate:"required"`
-		Muted      bool            `json:"muted"`
+		Muted      bool             `json:"muted"`
+		NotifyMode string           `json:"notify_mode"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid body"})
@@ -59,7 +60,12 @@ func UpdateNotificationSetting(c *fiber.Ctx) error {
 		}
 	}
 
-	setting, err := services.UpsertNotificationSetting(user.ID, body.TargetType, body.TargetID, body.Muted)
+	// Validate notify_mode if provided
+	if body.NotifyMode != "" && body.NotifyMode != "all" && body.NotifyMode != "mentions" && body.NotifyMode != "nothing" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "notify_mode must be 'all', 'mentions', or 'nothing'"})
+	}
+
+	setting, err := services.UpsertNotificationSetting(user.ID, body.TargetType, body.TargetID, body.Muted, body.NotifyMode)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update setting"})
 	}

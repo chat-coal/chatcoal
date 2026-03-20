@@ -31,6 +31,7 @@ type Message struct {
 	ImageWidth  int               `json:"image_width,omitempty"`
 	ImageHeight int               `json:"image_height,omitempty"`
 	Embeds      json.RawMessage   `json:"embeds,omitempty" gorm:"type:json"`
+	Mentions    json.RawMessage   `json:"mentions,omitempty" gorm:"type:json"`
 	Reactions   []MessageReaction `json:"reactions" gorm:"foreignKey:MessageID;constraint:OnDelete:CASCADE"`
 	CreatedAt   time.Time         `json:"created_at"`
 	UpdatedAt   time.Time         `json:"updated_at"`

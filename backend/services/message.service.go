@@ -49,6 +49,7 @@ func CreateMessage(content string, channelID, serverID, authorID models.Snowflak
 		}
 	}
 
+	mentionIDs := ParseMentions(content)
 	message := models.Message{
 		Content:     content,
 		ChannelID:   channelID,
@@ -60,6 +61,7 @@ func CreateMessage(content string, channelID, serverID, authorID models.Snowflak
 		ImageHeight: imageHeight,
 		ReplyToID:   replyToID,
 		ForumPostID: forumPostID,
+		Mentions:    MentionsToJSON(mentionIDs),
 	}
 	if err := database.Database.Create(&message).Error; err != nil {
 		return nil, err
@@ -87,6 +89,12 @@ func CreateMessage(content string, channelID, serverID, authorID models.Snowflak
 		First(&message, message.ID)
 
 	IncrementUnreadForChannel(channelID, serverID, authorID)
+
+	// Send mention push notifications directly (not via batcher, so content is available)
+	if len(mentionIDs) > 0 {
+		go SendMentionPush(&message, mentionIDs, serverID)
+	}
+
 	return &message, nil
 }
 
@@ -123,6 +131,7 @@ func UpdateMessage(id models.Snowflake, authorID models.Snowflake, content strin
 
 	message.Content = content
 	message.Edited = true
+	message.Mentions = MentionsToJSON(ParseMentions(content))
 	if err := database.Database.Save(&message).Error; err != nil {
 		return nil, err
 	}

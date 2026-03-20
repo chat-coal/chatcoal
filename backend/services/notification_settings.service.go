@@ -11,7 +11,21 @@ func GetNotificationSettings(userID models.Snowflake) ([]models.NotificationSett
 	return settings, err
 }
 
-func UpsertNotificationSetting(userID models.Snowflake, targetType string, targetID models.Snowflake, muted bool) (*models.NotificationSetting, error) {
+func UpsertNotificationSetting(userID models.Snowflake, targetType string, targetID models.Snowflake, muted bool, notifyMode string) (*models.NotificationSetting, error) {
+	// Sync muted and notify_mode
+	if notifyMode == "" {
+		if muted {
+			notifyMode = "nothing"
+		} else {
+			notifyMode = "all"
+		}
+	}
+	if notifyMode == "nothing" {
+		muted = true
+	} else if muted && notifyMode == "all" {
+		notifyMode = "nothing"
+	}
+
 	var setting models.NotificationSetting
 	err := database.Database.
 		Where("user_id = ? AND target_type = ? AND target_id = ?", userID, targetType, targetID).
@@ -24,6 +38,7 @@ func UpsertNotificationSetting(userID models.Snowflake, targetType string, targe
 			TargetType: targetType,
 			TargetID:   targetID,
 			Muted:      muted,
+			NotifyMode: notifyMode,
 		}
 		if err := database.Database.Create(&setting).Error; err != nil {
 			return nil, err
@@ -33,6 +48,7 @@ func UpsertNotificationSetting(userID models.Snowflake, targetType string, targe
 
 	// Update existing
 	setting.Muted = muted
+	setting.NotifyMode = notifyMode
 	if err := database.Database.Save(&setting).Error; err != nil {
 		return nil, err
 	}
@@ -50,6 +66,27 @@ func GetMutedUserIDsForChannel(channelID, serverID models.Snowflake) map[models.
 	result := make(map[models.Snowflake]bool, len(settings))
 	for _, s := range settings {
 		result[s.UserID] = true
+	}
+	return result
+}
+
+// GetNotifyModesForChannel returns the notify_mode for each user that has a setting
+// for the given channel or its server. Users not in the map use the default ("all").
+func GetNotifyModesForChannel(channelID, serverID models.Snowflake) map[models.Snowflake]string {
+	var settings []models.NotificationSetting
+	database.Database.
+		Where("(target_type = ? AND target_id = ?) OR (target_type = ? AND target_id = ?)",
+			"channel", channelID, "server", serverID).
+		Find(&settings)
+
+	result := make(map[models.Snowflake]string, len(settings))
+	for _, s := range settings {
+		// Channel-level setting overrides server-level
+		if s.TargetType == "channel" {
+			result[s.UserID] = s.NotifyMode
+		} else if _, exists := result[s.UserID]; !exists {
+			result[s.UserID] = s.NotifyMode
+		}
 	}
 	return result
 }

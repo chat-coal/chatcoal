@@ -1,6 +1,9 @@
 package metrics
 
-import "sync/atomic"
+import (
+	"runtime"
+	"sync/atomic"
+)
 
 var (
 	WSConnections         atomic.Int64
@@ -39,6 +42,12 @@ type VoiceStats struct {
 	ActiveUsers    int64 `json:"active_users"`
 }
 
+type ProcessStats struct {
+	Goroutines int    `json:"goroutines"`
+	HeapMB     uint64 `json:"heap_mb"`
+	SysMB      uint64 `json:"sys_mb"`
+}
+
 type Snapshot struct {
 	WSConnections         int64         `json:"ws_connections"`
 	WSConnectionsRejected int64         `json:"ws_connections_rejected_total"`
@@ -48,10 +57,21 @@ type Snapshot struct {
 	CacheMisses           CacheSnapshot `json:"cache_misses"`
 	Platform              PlatformStats `json:"platform"`
 	Voice                 VoiceStats    `json:"voice"`
+	ActiveUsers           int64         `json:"active_users"`
+	Process               ProcessStats  `json:"process"`
 }
 
-func Take(shardDepths []int, platform PlatformStats, voice VoiceStats) Snapshot {
+func Take(shardDepths []int, platform PlatformStats, voice VoiceStats, activeUsers int64) Snapshot {
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+
 	return Snapshot{
+		ActiveUsers: activeUsers,
+		Process: ProcessStats{
+			Goroutines: runtime.NumGoroutine(),
+			HeapMB:     mem.HeapAlloc / (1024 * 1024),
+			SysMB:      mem.Sys / (1024 * 1024),
+		},
 		WSConnections:         WSConnections.Load(),
 		WSConnectionsRejected: WSConnectionsRejected.Load(),
 		WSDroppedTasks:        WSDroppedTasks.Load(),

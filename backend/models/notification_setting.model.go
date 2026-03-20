@@ -8,6 +8,7 @@ type NotificationSetting struct {
 	TargetType string    `json:"target_type" gorm:"size:10;not null"`
 	TargetID   Snowflake `json:"target_id" gorm:"not null"`
 	Muted      bool      `json:"muted" gorm:"not null;default:false"`
+	NotifyMode string    `json:"notify_mode" gorm:"size:20;not null;default:all"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }

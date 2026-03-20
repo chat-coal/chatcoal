@@ -22,6 +22,8 @@
     --green: #3ecf8e;
     --red: #e84c4c;
     --blue: #5b9ef8;
+    --purple: #a78bfa;
+    --yellow: #f5c542;
   }
   body {
     background: var(--bg);
@@ -66,7 +68,7 @@
 
   main { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
 
-  .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
   .stat-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -78,6 +80,8 @@
   .stat-sub { font-size: 11px; color: var(--text-3); margin-top: 4px; }
   .stat-card.accent { border-color: var(--accent-dim); }
   .stat-card.accent .stat-value { color: var(--accent); }
+  .stat-card.green .stat-value { color: var(--green); }
+  .stat-card.green { border-color: rgba(62,207,142,0.15); }
 
   .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .panel {
@@ -87,14 +91,38 @@
     padding: 20px;
   }
   .panel.full { grid-column: 1 / -1; }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
   .panel-title {
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--text-3);
-    margin-bottom: 16px;
   }
+  .panel-title:only-child { margin-bottom: 16px; }
+  .time-range {
+    display: flex;
+    gap: 4px;
+  }
+  .time-range button {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-3);
+    font-family: 'Manrope', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .time-range button:hover { color: var(--text-2); border-color: var(--text-3); }
+  .time-range button.active { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
   canvas { width: 100% !important; }
 
   .cache-bars { display: flex; flex-direction: column; gap: 10px; }
@@ -103,6 +131,9 @@
   .cache-bar-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
   .cache-bar-fill { height: 100%; border-radius: 3px; background: var(--accent); transition: width 0.4s ease; }
 
+  @media (max-width: 900px) {
+    .stat-row { grid-template-columns: repeat(2, 1fr); }
+  }
   @media (max-width: 768px) {
     .stat-row, .chart-row { grid-template-columns: 1fr; }
     .panel.full { grid-column: 1; }
@@ -120,8 +151,13 @@
 </header>
 <main>
   <div class="stat-row">
+    <div class="stat-card green">
+      <div class="stat-label">Active Users</div>
+      <div class="stat-value" id="stat-active-users">—</div>
+      <div class="stat-sub">online via presence</div>
+    </div>
     <div class="stat-card accent">
-      <div class="stat-label">Active WS Connections</div>
+      <div class="stat-label">WS Connections</div>
       <div class="stat-value" id="stat-connections">—</div>
       <div class="stat-sub">live gauge</div>
     </div>
@@ -153,11 +189,52 @@
       <div class="stat-value" id="stat-voice">—</div>
       <div class="stat-sub" id="stat-voice-sub">channels / users</div>
     </div>
+    <div class="stat-card">
+      <div class="stat-label">Goroutines</div>
+      <div class="stat-value" id="stat-goroutines">—</div>
+      <div class="stat-sub" id="stat-memory-sub">— heap / — sys</div>
+    </div>
   </div>
 
   <div class="panel full">
-    <div class="panel-title">WS Connection Count — last 30 samples</div>
+    <div class="panel-header">
+      <div class="panel-title">Active Users & WS Connections</div>
+      <div class="time-range" id="ws-range">
+        <button data-range="300">5m</button>
+        <button data-range="1800">30m</button>
+        <button data-range="3600">1h</button>
+        <button data-range="21600">6h</button>
+        <button data-range="86400" class="active">24h</button>
+      </div>
+    </div>
     <canvas id="ws-chart" height="80"></canvas>
+  </div>
+
+  <div class="chart-row">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Memory Usage (MB)</div>
+        <div class="time-range" id="mem-range">
+          <button data-range="1800">30m</button>
+          <button data-range="3600" class="active">1h</button>
+          <button data-range="21600">6h</button>
+          <button data-range="86400">24h</button>
+        </div>
+      </div>
+      <canvas id="mem-chart" height="160"></canvas>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Goroutines</div>
+        <div class="time-range" id="goroutine-range">
+          <button data-range="1800">30m</button>
+          <button data-range="3600" class="active">1h</button>
+          <button data-range="21600">6h</button>
+          <button data-range="86400">24h</button>
+        </div>
+      </div>
+      <canvas id="goroutine-chart" height="160"></canvas>
+    </div>
   </div>
 
   <div class="chart-row">
@@ -210,26 +287,75 @@ const chartDefaults = {
   },
 };
 
-const wsCtx = document.getElementById('ws-chart').getContext('2d');
-const wsChart = new Chart(wsCtx, {
-  type: 'line',
-  data: {
-    labels: [],
-    datasets: [{
-      data: [],
-      borderColor: '#E8521A',
-      backgroundColor: 'rgba(232,82,26,0.08)',
-      borderWidth: 2,
-      pointRadius: 0,
-      fill: true,
-      tension: 0.3,
-    }]
-  },
-  options: { ...chartDefaults },
-});
+function makeLineChart(ctx, datasets) {
+  return new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets },
+    options: { ...chartDefaults },
+  });
+}
 
-const shardCtx = document.getElementById('shard-chart').getContext('2d');
-const shardChart = new Chart(shardCtx, {
+const wsChart = makeLineChart(document.getElementById('ws-chart').getContext('2d'), [
+  {
+    label: 'Active Users',
+    data: [],
+    borderColor: '#3ecf8e',
+    backgroundColor: 'rgba(62,207,142,0.08)',
+    borderWidth: 2,
+    pointRadius: 0,
+    fill: true,
+    tension: 0.3,
+  },
+  {
+    label: 'WS Connections',
+    data: [],
+    borderColor: '#E8521A',
+    backgroundColor: 'rgba(232,82,26,0.08)',
+    borderWidth: 2,
+    pointRadius: 0,
+    fill: true,
+    tension: 0.3,
+  },
+]);
+wsChart.options.plugins.legend = { display: true, labels: { color: '#9a9db0', boxWidth: 12, padding: 16 } };
+
+const memChart = makeLineChart(document.getElementById('mem-chart').getContext('2d'), [
+  {
+    label: 'Heap',
+    data: [],
+    borderColor: '#a78bfa',
+    backgroundColor: 'rgba(167,139,250,0.08)',
+    borderWidth: 2,
+    pointRadius: 0,
+    fill: true,
+    tension: 0.3,
+  },
+  {
+    label: 'Sys',
+    data: [],
+    borderColor: '#5b9ef8',
+    backgroundColor: 'rgba(91,158,248,0.08)',
+    borderWidth: 2,
+    pointRadius: 0,
+    fill: true,
+    tension: 0.3,
+  },
+]);
+memChart.options.plugins.legend = { display: true, labels: { color: '#9a9db0', boxWidth: 12, padding: 16 } };
+
+const goroutineChart = makeLineChart(document.getElementById('goroutine-chart').getContext('2d'), [
+  {
+    data: [],
+    borderColor: '#f5c542',
+    backgroundColor: 'rgba(245,197,66,0.08)',
+    borderWidth: 2,
+    pointRadius: 0,
+    fill: true,
+    tension: 0.3,
+  },
+]);
+
+const shardChart = new Chart(document.getElementById('shard-chart').getContext('2d'), {
   type: 'bar',
   data: {
     labels: Array.from({length: 16}, (_, i) => `S${i}`),
@@ -248,16 +374,42 @@ const shardChart = new Chart(shardCtx, {
   },
 });
 
+// Time range state
+const ranges = { ws: 86400, mem: 3600, goroutine: 3600 };
+
+function setupRange(containerId, key) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    ranges[key] = parseInt(btn.dataset.range);
+    el.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (lastHistory) renderCharts(lastHistory);
+  });
+}
+setupRange('ws-range', 'ws');
+setupRange('mem-range', 'mem');
+setupRange('goroutine-range', 'goroutine');
+
+let lastHistory = null;
+
 function fmtTime(ms) {
   const d = new Date(ms);
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function fmtTimeShort(ms) {
+  const d = new Date(ms);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 function computeRate(history, field) {
   if (history.length < 2) return '—';
   const first = history[0];
   const last = history[history.length - 1];
-  const dt = (last.ts - first.ts) / 60000; // minutes
+  const dt = (last.ts - first.ts) / 60000;
   if (dt <= 0) return '—';
   const dv = last.snapshot[field] - first.snapshot[field];
   return (dv / dt).toFixed(1) + '/min';
@@ -267,6 +419,50 @@ function hitRate(hits, misses) {
   const total = hits + misses;
   if (total === 0) return null;
   return hits / total;
+}
+
+function filterByRange(history, rangeSec) {
+  if (!history || history.length === 0) return [];
+  const now = history[history.length - 1].ts;
+  const cutoff = now - rangeSec * 1000;
+  const filtered = history.filter(e => e.ts >= cutoff);
+  // Downsample if too many points (max ~300 for chart perf)
+  if (filtered.length <= 300) return filtered;
+  const step = Math.ceil(filtered.length / 300);
+  const result = [];
+  for (let i = 0; i < filtered.length; i += step) {
+    result.push(filtered[i]);
+  }
+  if (result[result.length - 1] !== filtered[filtered.length - 1]) {
+    result.push(filtered[filtered.length - 1]);
+  }
+  return result;
+}
+
+function renderCharts(history) {
+  const timeFmt = (ms) => ranges.ws >= 21600 ? fmtTimeShort(ms) : fmtTime(ms);
+
+  // WS + Active Users chart
+  const wsSlice = filterByRange(history, ranges.ws);
+  wsChart.data.labels = wsSlice.map(e => timeFmt(e.ts));
+  wsChart.data.datasets[0].data = wsSlice.map(e => e.snapshot.active_users ?? 0);
+  wsChart.data.datasets[1].data = wsSlice.map(e => e.snapshot.ws_connections);
+  wsChart.update('none');
+
+  // Memory chart
+  const memSlice = filterByRange(history, ranges.mem);
+  const memFmt = (ms) => ranges.mem >= 21600 ? fmtTimeShort(ms) : fmtTime(ms);
+  memChart.data.labels = memSlice.map(e => memFmt(e.ts));
+  memChart.data.datasets[0].data = memSlice.map(e => e.snapshot.process?.heap_mb ?? 0);
+  memChart.data.datasets[1].data = memSlice.map(e => e.snapshot.process?.sys_mb ?? 0);
+  memChart.update('none');
+
+  // Goroutine chart
+  const grSlice = filterByRange(history, ranges.goroutine);
+  const grFmt = (ms) => ranges.goroutine >= 21600 ? fmtTimeShort(ms) : fmtTime(ms);
+  goroutineChart.data.labels = grSlice.map(e => grFmt(e.ts));
+  goroutineChart.data.datasets[0].data = grSlice.map(e => e.snapshot.process?.goroutines ?? 0);
+  goroutineChart.update('none');
 }
 
 async function refresh() {
@@ -285,7 +481,12 @@ async function refresh() {
 
     if (!history || history.length === 0) return;
 
+    lastHistory = history;
     const latest = history[history.length - 1].snapshot;
+
+    // Active users
+    document.getElementById('stat-active-users').textContent =
+      (latest.active_users ?? 0).toLocaleString();
 
     // Stat cards
     document.getElementById('stat-connections').textContent =
@@ -308,11 +509,16 @@ async function refresh() {
     document.getElementById('stat-voice-sub').textContent =
       voiceCh + ' channel' + (voiceCh !== 1 ? 's' : '') + ' active';
 
-    // WS line chart — last 30 points
-    const slice = history.slice(-30);
-    wsChart.data.labels = slice.map(e => fmtTime(e.ts));
-    wsChart.data.datasets[0].data = slice.map(e => e.snapshot.ws_connections);
-    wsChart.update('none');
+    // Process stats
+    const proc = latest.process;
+    if (proc) {
+      document.getElementById('stat-goroutines').textContent = proc.goroutines?.toLocaleString() ?? '—';
+      document.getElementById('stat-memory-sub').textContent =
+        (proc.heap_mb ?? 0) + ' MB heap / ' + (proc.sys_mb ?? 0) + ' MB sys';
+    }
+
+    // Charts
+    renderCharts(history);
 
     // Shard bar chart
     if (latest.ws_shard_queue_depths && latest.ws_shard_queue_depths.length === 16) {
