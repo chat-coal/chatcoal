@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useForumStore } from '@/stores/forum'
 import { sendTyping, sendDMTyping } from '@/services/websocket.service'
 import { useToastStore } from '@/stores/toast'
+import { resolveFileUrl } from '@/utils/avatar'
 import GifPicker from './GifPicker.vue'
 
 const props = defineProps({
@@ -22,6 +23,10 @@ const props = defineProps({
   forumPostId: {
     type: [String, Number],
     default: null,
+  },
+  members: {
+    type: Array,
+    default: () => [],
   },
 })
 
@@ -41,6 +46,14 @@ const textInputRef = ref(null)
 const showGifPicker = ref(false)
 let typingTimeout = null
 
+// Mention autocomplete state
+const showMentionPicker = ref(false)
+const mentionQuery = ref('')
+const mentionIndex = ref(0)
+const mentionStartPos = ref(-1)
+// Tracks inserted mentions: displayName → userId for converting on send
+const insertedMentions = ref(new Map())
+
 watch(() => props.replyingTo, (val) => {
   if (val) nextTick(() => textInputRef.value?.focus())
 })
@@ -56,6 +69,19 @@ const placeholder = computed(() => {
 })
 
 const canSend = computed(() => content.value.trim() || selectedFile.value)
+
+const mentionResults = computed(() => {
+  if (!mentionQuery.value && mentionQuery.value !== '') return []
+  const q = mentionQuery.value.toLowerCase()
+  return props.members
+    .filter((m) => {
+      const user = m.user || m
+      const name = (user.display_name || '').toLowerCase()
+      const uname = (user.username || '').toLowerCase()
+      return name.includes(q) || uname.includes(q)
+    })
+    .slice(0, 10)
+})
 
 function formatFileSize(bytes) {
   if (!bytes) return ''
@@ -85,14 +111,19 @@ function removeFile() {
 }
 
 function send() {
+  if (showMentionPicker.value) {
+    // Don't send when mention picker is active and user presses Enter to select
+    return
+  }
   if (!canSend.value) return
-  const text = content.value.trim()
+  const text = convertMentionsToTokens(content.value.trim())
   const file = selectedFile.value
   const replyId = props.replyingTo?.id || null
 
   // Clear input immediately for snappy UX
   content.value = ''
   selectedFile.value = null
+  insertedMentions.value = new Map()
   if (replyId) emit('cancel-reply')
 
   // Send in background — errors shown on the message itself
@@ -122,6 +153,8 @@ function selectGif({ url, width, height }) {
 }
 
 function handleInput() {
+  detectMentionQuery()
+
   if (!typingTimeout) {
     if (props.mode === 'dm') {
       const dm = dmsStore.currentDMChannel
@@ -137,6 +170,107 @@ function handleInput() {
   typingTimeout = setTimeout(() => {
     typingTimeout = null
   }, 2000)
+}
+
+function detectMentionQuery() {
+  const input = textInputRef.value
+  if (!input) return
+
+  const cursorPos = input.selectionStart
+  const text = content.value.slice(0, cursorPos)
+
+  // Find the last '@' at a word boundary
+  const atIndex = text.lastIndexOf('@')
+  if (atIndex === -1) {
+    showMentionPicker.value = false
+    return
+  }
+
+  // Check @ is at word boundary (start of text, after space, or after newline)
+  const beforeAt = atIndex > 0 ? text[atIndex - 1] : ' '
+  if (beforeAt !== ' ' && beforeAt !== '\n' && atIndex !== 0) {
+    showMentionPicker.value = false
+    return
+  }
+
+  const query = text.slice(atIndex + 1)
+  // Don't show if query contains spaces (user typed past the mention)
+  if (query.includes(' ')) {
+    showMentionPicker.value = false
+    return
+  }
+
+  mentionQuery.value = query
+  mentionStartPos.value = atIndex
+  mentionIndex.value = 0
+  showMentionPicker.value = props.members.length > 0
+}
+
+function selectMention(member) {
+  const user = member.user || member
+  const userId = String(member.user_id || user.id)
+  const displayName = user.display_name || user.username || 'Unknown'
+  const mentionText = `@${displayName}`
+  const before = content.value.slice(0, mentionStartPos.value)
+  const after = content.value.slice(textInputRef.value.selectionStart)
+  content.value = `${before}${mentionText} ${after}`
+  showMentionPicker.value = false
+
+  // Track this mention for conversion on send
+  insertedMentions.value.set(displayName, userId)
+
+  nextTick(() => {
+    const newPos = before.length + mentionText.length + 1
+    textInputRef.value?.setSelectionRange(newPos, newPos)
+    textInputRef.value?.focus()
+  })
+}
+
+// Convert @DisplayName mentions back to <@id> tokens before sending
+function convertMentionsToTokens(text) {
+  let result = text
+  for (const [displayName, userId] of insertedMentions.value) {
+    // Replace all occurrences of @DisplayName with <@userId>
+    const mentionText = `@${displayName}`
+    while (result.includes(mentionText)) {
+      result = result.replace(mentionText, `<@${userId}>`)
+    }
+  }
+  return result
+}
+
+function handleKeydown(e) {
+  if (!showMentionPicker.value || mentionResults.value.length === 0) return
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    mentionIndex.value = (mentionIndex.value + 1) % mentionResults.value.length
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    mentionIndex.value = (mentionIndex.value - 1 + mentionResults.value.length) % mentionResults.value.length
+  } else if (e.key === 'Enter' || e.key === 'Tab') {
+    e.preventDefault()
+    e.stopPropagation()
+    selectMention(mentionResults.value[mentionIndex.value])
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    showMentionPicker.value = false
+  }
+}
+
+function getMemberDisplayName(member) {
+  const user = member.user || member
+  return user.display_name || user.username || 'Unknown'
+}
+
+function getMemberUsername(member) {
+  const user = member.user || member
+  return user.username || ''
+}
+
+function getMemberAvatar(member) {
+  const user = member.user || member
+  return user.avatar_url ? resolveFileUrl(user.avatar_url) : null
 }
 </script>
 
@@ -175,6 +309,36 @@ function handleInput() {
       <!-- GIF picker -->
       <GifPicker v-if="showGifPicker" @select="selectGif" @close="showGifPicker = false" />
 
+      <!-- Mention autocomplete dropdown -->
+      <div
+        v-if="showMentionPicker && mentionResults.length"
+        class="absolute left-0 right-0 bottom-full mb-1 bg-[var(--card)] rounded-xl border border-[var(--surface-border)] shadow-xl shadow-black/10 max-h-[240px] overflow-y-auto z-50"
+      >
+        <button
+          v-for="(member, i) in mentionResults"
+          :key="member.user_id || member.id"
+          @mousedown.prevent="selectMention(member)"
+          class="w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors duration-75 cursor-pointer"
+          :class="i === mentionIndex ? 'bg-[#E8521A]/10' : 'hover:bg-[var(--surface-2)]'"
+        >
+          <div
+            v-if="getMemberAvatar(member)"
+            class="w-7 h-7 rounded-full bg-cover bg-center shrink-0"
+            :style="{ backgroundImage: `url(${getMemberAvatar(member)})` }"
+          ></div>
+          <div
+            v-else
+            class="w-7 h-7 rounded-full bg-[#E8521A] flex items-center justify-center text-white text-xs font-bold shrink-0"
+          >
+            {{ getMemberDisplayName(member)[0]?.toUpperCase() }}
+          </div>
+          <div class="min-w-0">
+            <div class="text-sm text-[var(--text-1)] font-medium truncate">{{ getMemberDisplayName(member) }}</div>
+            <div v-if="getMemberUsername(member)" class="text-[11px] text-[var(--text-4)] truncate">@{{ getMemberUsername(member) }}</div>
+          </div>
+        </button>
+      </div>
+
       <!-- File attach button -->
       <button
         @click="openFilePicker"
@@ -209,6 +373,7 @@ function handleInput() {
       <input
         ref="textInputRef"
         v-model="content"
+        @keydown="handleKeydown"
         @keyup.enter="send"
         @input="handleInput"
         :placeholder="placeholder"

@@ -43,6 +43,9 @@ const isElectron = !!window.electronAPI?.isElectron
 const showMembers = ref(true)
 provide('showMembers', showMembers)
 
+const showGuestSignUp = ref(false)
+provide('showGuestSignUp', showGuestSignUp)
+
 const mobileNavOpen = ref(false)
 provide('closeMobileNav', () => { mobileNavOpen.value = false })
 
@@ -81,7 +84,7 @@ async function handleRefreshVerification() {
 }
 
 let unsubConnected, unsubDisconnected
-let unsubMessage, unsubEdit, unsubDelete, unsubVoiceState
+let unsubMessage, unsubEdit, unsubDelete, unsubVoiceState, unsubScreenShare
 let unsubDMMessage, unsubDMEdit, unsubDMDelete
 let unsubReaction, unsubDMReaction
 let unsubMemberUpdate, unsubKicked, unsubBanned
@@ -181,6 +184,9 @@ onMounted(async () => {
   })
   unsubVoiceState = on('voice_state_update', (data) => {
     voiceStore.handleVoiceStateUpdate(data)
+  })
+  unsubScreenShare = on('screen_share_update', (data) => {
+    voiceStore.handleScreenShareUpdate(data)
   })
   unsubReaction = on('reaction_update', (data) => {
     const msg = messagesStore.messages.find((m) => m.id === data.message_id)
@@ -374,6 +380,7 @@ onUnmounted(() => {
   unsubEdit?.()
   unsubDelete?.()
   unsubVoiceState?.()
+  unsubScreenShare?.()
   unsubDMMessage?.()
   unsubDMEdit?.()
   unsubDMDelete?.()
@@ -589,6 +596,20 @@ watchEffect(() => {
         <button @click="handleRefreshVerification" :disabled="refreshingVerification" class="underline underline-offset-2 hover:text-orange-200 transition-colors cursor-pointer disabled:opacity-50">
           {{ refreshingVerification ? 'Checking...' : "I've verified" }}
         </button>
+      </div>
+    </Transition>
+
+    <!-- Anonymous account warning banner -->
+    <Transition name="slide-banner">
+      <div
+        v-if="authStore.dbUser?.is_anonymous"
+        class="shrink-0 flex items-center justify-center gap-3 bg-amber-600 text-white text-xs font-medium py-1.5 px-4"
+      >
+        Guest accounts are deleted after 7 days of inactivity.
+        <button @click="showGuestSignUp = true" class="underline underline-offset-2 hover:text-amber-200 transition-colors cursor-pointer">
+          Sign up
+        </button>
+        to keep your account.
       </div>
     </Transition>
 

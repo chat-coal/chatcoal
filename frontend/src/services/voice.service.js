@@ -1,4 +1,4 @@
-import { Room, RoomEvent } from 'livekit-client'
+import { Room, RoomEvent, Track } from 'livekit-client'
 import { send, on } from './websocket.service'
 import { useVoiceStore } from '@/stores/voice'
 import { useAuthStore } from '@/stores/auth'
@@ -13,6 +13,10 @@ let currentServerId = null
 
 // --- LiveKit state ---
 let room = null
+
+// --- Screen share state ---
+let screenShareStream = null
+let remoteScreenShareStream = null
 
 // --- P2P state ---
 let localStream = null
@@ -40,11 +44,31 @@ export async function joinChannel(channelId, serverId) {
           el.id = `lk-audio-${participant.identity}`
           document.body.appendChild(el)
           if (voiceStore.isDeafened) el.muted = true
+        } else if (track.kind === 'video' && track.source === Track.Source.ScreenShare) {
+          // Use LiveKit's attach() to get a properly wired element, then grab its stream
+          const screenEl = track.attach()
+          screenEl.id = `lk-screen-${participant.identity}`
+          screenEl.style.cssText = 'position:fixed;top:-9999px;width:1px;height:1px;'
+          document.body.appendChild(screenEl)
+          remoteScreenShareStream = screenEl.srcObject
+          voiceStore.screenShareUserId = participant.identity
         }
       })
 
-      room.on(RoomEvent.TrackUnsubscribed, (track) => {
+      room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+        if (track.kind === 'video' && track.source === Track.Source.ScreenShare) {
+          remoteScreenShareStream = null
+          voiceStore.screenShareUserId = null
+        }
         track.detach().forEach((el) => el.remove())
+      })
+
+      room.on(RoomEvent.LocalTrackUnpublished, (publication) => {
+        if (publication.source === Track.Source.ScreenShare) {
+          voiceStore.isScreenSharing = false
+          voiceStore.screenShareUserId = null
+          send({ type: 'screen_share_stop' })
+        }
       })
 
       room.on(RoomEvent.Disconnected, () => {
@@ -91,6 +115,9 @@ export async function joinChannel(channelId, serverId) {
 
 export async function leaveChannel() {
   const voiceStore = useVoiceStore()
+  if (voiceStore.isScreenSharing) {
+    stopScreenShare()
+  }
   send({ type: 'voice_leave' })
 
   if (mode === 'livekit') {
@@ -118,11 +145,12 @@ export async function leaveChannel() {
 
 function cleanupLiveKit() {
   if (!room) return
-  document.querySelectorAll('[id^="lk-audio-"]').forEach((el) => {
+  document.querySelectorAll('[id^="lk-audio-"], [id^="lk-screen-"]').forEach((el) => {
     el.pause()
     el.srcObject = null
     el.remove()
   })
+  remoteScreenShareStream = null
   room.removeAllListeners()
   room = null
 }
@@ -163,6 +191,17 @@ function createPeerConnection(remoteUserId, isOfferer) {
   }
 
   pc.ontrack = (event) => {
+    const voiceStore = useVoiceStore()
+    if (event.track.kind === 'video') {
+      // Screen share track received — store stream for watcher to pick up
+      remoteScreenShareStream = event.streams[0]
+      voiceStore.screenShareUserId = remoteUserId
+      event.track.onended = () => {
+        remoteScreenShareStream = null
+        voiceStore.screenShareUserId = null
+      }
+      return
+    }
     let audio = remoteAudios.get(remoteUserId)
     if (!audio) {
       audio = document.createElement('audio')
@@ -170,7 +209,6 @@ function createPeerConnection(remoteUserId, isOfferer) {
       remoteAudios.set(remoteUserId, audio)
     }
     audio.srcObject = event.streams[0]
-    const voiceStore = useVoiceStore()
     audio.muted = voiceStore.isDeafened
   }
 
@@ -201,20 +239,33 @@ function createPeerConnection(remoteUserId, isOfferer) {
 
 function handleOffer(data) {
   const { user_id, sdp } = data
-  if (peerConnections.has(user_id)) {
-    peerConnections.get(user_id).close()
-  }
-  const pc = createPeerConnection(user_id, false)
-  pc.setRemoteDescription(new RTCSessionDescription(sdp))
-    .then(() => pc.createAnswer())
-    .then((answer) => pc.setLocalDescription(answer))
-    .then(() => {
-      send({
-        type: 'webrtc_answer',
-        target_user_id: user_id,
-        sdp: pc.localDescription.toJSON(),
+  let pc = peerConnections.get(user_id)
+  if (pc) {
+    // Renegotiation on existing connection (e.g. screen share track added/removed)
+    pc.setRemoteDescription(new RTCSessionDescription(sdp))
+      .then(() => pc.createAnswer())
+      .then((answer) => pc.setLocalDescription(answer))
+      .then(() => {
+        send({
+          type: 'webrtc_answer',
+          target_user_id: user_id,
+          sdp: pc.localDescription.toJSON(),
+        })
       })
-    })
+  } else {
+    // New peer — create connection
+    pc = createPeerConnection(user_id, false)
+    pc.setRemoteDescription(new RTCSessionDescription(sdp))
+      .then(() => pc.createAnswer())
+      .then((answer) => pc.setLocalDescription(answer))
+      .then(() => {
+        send({
+          type: 'webrtc_answer',
+          target_user_id: user_id,
+          sdp: pc.localDescription.toJSON(),
+        })
+      })
+  }
 }
 
 function handleAnswer(data) {
@@ -283,6 +334,98 @@ export function setDeafened(deafened) {
       audio.muted = deafened
     }
   }
+}
+
+export async function startScreenShare() {
+  const voiceStore = useVoiceStore()
+
+  // Don't allow starting a screen share while someone else is sharing
+  if (voiceStore.screenShareUserId) return
+
+  if (mode === 'livekit' && room) {
+    // LiveKit handles getDisplayMedia internally
+    try {
+      await room.localParticipant.setScreenShareEnabled(true, { audio: false })
+    } catch {
+      return // user cancelled
+    }
+  } else if (mode === 'p2p') {
+    try {
+      screenShareStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+    } catch {
+      return // user cancelled the picker
+    }
+
+    // Handle browser-native "Stop sharing" button
+    screenShareStream.getVideoTracks()[0].onended = () => {
+      stopScreenShare()
+    }
+
+    // Add screen share track to all existing peer connections and renegotiate
+    const videoTrack = screenShareStream.getVideoTracks()[0]
+    for (const [remoteUserId, pc] of peerConnections) {
+      pc.addTrack(videoTrack, screenShareStream)
+      // Renegotiate — the remote peer needs a new offer to learn about the video track
+      pc.createOffer()
+        .then((offer) => pc.setLocalDescription(offer))
+        .then(() => {
+          send({
+            type: 'webrtc_offer',
+            target_user_id: remoteUserId,
+            sdp: pc.localDescription.toJSON(),
+          })
+        })
+    }
+  }
+
+  voiceStore.isScreenSharing = true
+  send({ type: 'screen_share_start' })
+}
+
+export function stopScreenShare() {
+  const voiceStore = useVoiceStore()
+  if (!voiceStore.isScreenSharing) return
+
+  if (mode === 'livekit' && room) {
+    room.localParticipant.setScreenShareEnabled(false)
+  } else if (mode === 'p2p') {
+    // Remove screen share tracks from peer connections and renegotiate
+    if (screenShareStream) {
+      const videoTrack = screenShareStream.getVideoTracks()[0]
+      for (const [remoteUserId, pc] of peerConnections) {
+        const sender = pc.getSenders().find((s) => s.track === videoTrack)
+        if (sender) {
+          pc.removeTrack(sender)
+          pc.createOffer()
+            .then((offer) => pc.setLocalDescription(offer))
+            .then(() => {
+              send({
+                type: 'webrtc_offer',
+                target_user_id: remoteUserId,
+                sdp: pc.localDescription.toJSON(),
+              })
+            })
+        }
+      }
+    }
+  }
+
+  if (screenShareStream) {
+    screenShareStream.getTracks().forEach((t) => t.stop())
+    screenShareStream = null
+  }
+
+  voiceStore.isScreenSharing = false
+  voiceStore.screenShareUserId = null
+  send({ type: 'screen_share_stop' })
+}
+
+export function getScreenShareStream() {
+  return screenShareStream
+}
+
+export function getRemoteScreenShareStream() {
+  return remoteScreenShareStream
 }
 
 export function cleanup() {

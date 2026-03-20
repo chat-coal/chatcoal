@@ -166,6 +166,12 @@ export const useAuthStore = defineStore('auth', () => {
     dbUser.value = await api.login()
   }
 
+  async function linkWithApple() {
+    await linkWithPopup(auth.currentUser, appleProvider)
+    user.value = auth.currentUser
+    dbUser.value = await api.login()
+  }
+
   async function linkWithEmail(emailAddr, password) {
     const credential = EmailAuthProvider.credential(emailAddr, password)
     await linkWithCredential(auth.currentUser, credential)
@@ -214,6 +220,7 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     deleteAccount,
     linkWithGoogle,
+    linkWithApple,
     linkWithEmail,
   }
 })

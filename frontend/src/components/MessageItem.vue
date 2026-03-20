@@ -20,6 +20,7 @@ const props = defineProps({
   serverMember: { type: Object, default: null },
   selecting: { type: Boolean, default: false },
   selected: { type: Boolean, default: false },
+  memberMap: { type: Map, default: null },
 })
 
 const emit = defineEmits(['reply', 'scroll-to-message', 'pin', 'unpin', 'toggle-select'])
@@ -42,10 +43,12 @@ const reportReason = ref('')
 const showBlockedContent = ref(false)
 const profileAnchor = ref(null)
 const showProfile = ref(false)
+const profileUserId = ref(null)
 
-function openProfile(event) {
+function openProfile(event, userId) {
   if (props.mode === 'dm') return
   profileAnchor.value = event.currentTarget
+  profileUserId.value = userId || props.message.author_id
   showProfile.value = true
 }
 
@@ -213,7 +216,7 @@ const gifContainerStyle = computed(() => {
   }
 })
 
-const contentParts = computed(() => linkify(props.message.content))
+const contentParts = computed(() => linkify(props.message.content, props.memberMap))
 const embeds = computed(() => {
   if (!props.message.embeds) return []
   if (typeof props.message.embeds === 'string') {
@@ -396,6 +399,11 @@ const canDelete = () => isAuthor() || (props.mode === 'server' && serversStore.c
             rel="noopener noreferrer"
             class="text-[#E8521A] hover:underline break-all"
           >{{ part.value }}</a>
+          <span
+            v-else-if="part.type === 'mention'"
+            class="text-[#E8521A] bg-[#E8521A]/10 rounded px-1 font-medium cursor-pointer hover:underline"
+            @click="openProfile($event, part.userId)"
+          >{{ part.value }}</span>
           <template v-else>{{ part.value }}</template>
         </template>
       </p>
@@ -620,9 +628,9 @@ const canDelete = () => isAuthor() || (props.mode === 'server' && serversStore.c
   <!-- User profile popover -->
   <UserProfilePopover
     v-if="showProfile && mode === 'server'"
-    :user-id="message.author_id"
+    :user-id="profileUserId"
     :anchor-el="profileAnchor"
-    :server-member="serverMember"
+    :server-member="profileUserId === message.author_id ? serverMember : null"
     @close="showProfile = false"
   />
 </template>

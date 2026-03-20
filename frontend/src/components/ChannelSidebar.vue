@@ -12,10 +12,10 @@ import { useToastStore } from '@/stores/toast'
 import api from '@/services/api.service'
 import { getAvatarColor, getDefaultAvatarStyle, resolveFileUrl, cssBackgroundUrl } from '@/utils/avatar'
 import { on } from '@/services/websocket.service'
-import UserStatusBar from './UserStatusBar.vue'
 import InviteModal from './InviteModal.vue'
 import ServerSettingsModal from './ServerSettingsModal.vue'
 import ChannelFederationModal from './ChannelFederationModal.vue'
+import UserStatusBar from './UserStatusBar.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -241,7 +241,12 @@ async function addChannel() {
 function formatLastMessage(dm) {
   if (!dm.last_message) return ''
   const content = dm.last_message.content
-  return content.length > 30 ? content.slice(0, 30) + '...' : content
+  const resolved = content.replace(/<@(\d+)>/g, (_, userId) => {
+    if (String(dm.user1?.id) === userId) return dm.user1.display_name || 'Unknown'
+    if (String(dm.user2?.id) === userId) return dm.user2.display_name || 'Unknown'
+    return userId
+  })
+  return resolved.length > 30 ? resolved.slice(0, 30) + '...' : resolved
 }
 
 // Drag-and-drop reorder

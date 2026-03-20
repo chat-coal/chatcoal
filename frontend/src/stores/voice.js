@@ -10,6 +10,8 @@ export const useVoiceStore = defineStore('voice', () => {
   const isDeafened = ref(false)
   const isJoining = ref(false)
   const connectionMode = ref(null) // 'livekit' | 'p2p' | null
+  const isScreenSharing = ref(false)
+  const screenShareUserId = ref(null) // user currently sharing in our channel
 
   // Push-to-talk state
   const inputMode = ref(localStorage.getItem('voiceInputMode') || 'voice_activity') // 'voice_activity' | 'push_to_talk'
@@ -78,6 +80,18 @@ export const useVoiceStore = defineStore('voice', () => {
     localStorage.setItem('voicePttKey', key)
   }
 
+  function handleScreenShareUpdate({ channel_id, user_id, action }) {
+    const chId = String(channel_id)
+    if (chId !== String(currentVoiceChannelId.value)) return
+    if (action === 'start') {
+      screenShareUserId.value = String(user_id)
+    } else if (action === 'stop') {
+      if (String(screenShareUserId.value) === String(user_id)) {
+        screenShareUserId.value = null
+      }
+    }
+  }
+
   function clear() {
     voiceStates.value = {}
     currentVoiceChannelId.value = null
@@ -85,6 +99,8 @@ export const useVoiceStore = defineStore('voice', () => {
     isDeafened.value = false
     isJoining.value = false
     connectionMode.value = null
+    isScreenSharing.value = false
+    screenShareUserId.value = null
     pttActive.value = false
   }
 
@@ -95,11 +111,14 @@ export const useVoiceStore = defineStore('voice', () => {
     isDeafened,
     isJoining,
     connectionMode,
+    isScreenSharing,
+    screenShareUserId,
     inputMode,
     pttKey,
     pttActive,
     globalPttAvailable,
     handleVoiceStateUpdate,
+    handleScreenShareUpdate,
     fetchVoiceStates,
     setCurrentVoiceChannel,
     toggleMute,

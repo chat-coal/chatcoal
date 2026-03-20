@@ -29,6 +29,7 @@ const avatarPreview = ref(
   existingUrl ? (existingUrl.startsWith('http') ? existingUrl : `${API_URL}${existingUrl}`) : ''
 )
 const saving = ref(false)
+const activeTab = ref('profile')
 const usernameError = ref('')
 const showDeleteConfirm = ref(false)
 const deleteConfirmText = ref('')
@@ -283,8 +284,29 @@ async function save() {
 <template>
   <Teleport to="body">
     <div class="fixed inset-0 bg-[var(--backdrop)] backdrop-blur-sm flex items-center justify-center z-50" @click.self="emit('close')">
-      <div class="bg-[var(--modal-bg)] rounded-2xl p-7 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl shadow-black/10 animate-scale-in border border-[var(--modal-border)]">
-        <h2 class="font-display text-2xl font-bold text-[var(--text-1)] mb-6">Profile Settings</h2>
+      <div class="bg-[var(--modal-bg)] rounded-2xl w-full max-w-md max-h-[90vh] shadow-2xl shadow-black/10 animate-scale-in border border-[var(--modal-border)] flex flex-col">
+        <div class="p-7 pb-0 shrink-0">
+          <h2 class="font-display text-2xl font-bold text-[var(--text-1)] mb-4">Profile Settings</h2>
+
+          <!-- Tabs -->
+          <div class="flex gap-1 border-b border-[var(--surface-border)]">
+            <button
+              @click="activeTab = 'profile'"
+              class="px-4 py-2.5 text-sm font-medium transition-colors duration-150 cursor-pointer border-b-2 -mb-px"
+              :class="activeTab === 'profile' ? 'text-[var(--text-1)] border-[#E8521A]' : 'text-[var(--text-3)] border-transparent hover:text-[var(--text-1)]'"
+            >Profile</button>
+            <button
+              v-if="isPasswordUser"
+              @click="activeTab = 'password'"
+              class="px-4 py-2.5 text-sm font-medium transition-colors duration-150 cursor-pointer border-b-2 -mb-px"
+              :class="activeTab === 'password' ? 'text-[var(--text-1)] border-[#E8521A]' : 'text-[var(--text-3)] border-transparent hover:text-[var(--text-1)]'"
+            >Password</button>
+          </div>
+        </div>
+
+        <div class="p-7 pt-5 overflow-y-auto flex-1">
+        <!-- Profile Tab -->
+        <template v-if="activeTab === 'profile'">
 
         <!-- Avatar upload -->
         <div class="flex flex-col items-center mb-6 gap-2">
@@ -486,10 +508,39 @@ async function save() {
         <div v-else class="mb-6"></div>
         </div>
 
-        <!-- Change Password (email/password users only) -->
-        <template v-if="isPasswordUser">
+        <!-- Actions -->
+        <div class="flex justify-end gap-3">
+          <button @click="emit('close')" class="text-[var(--text-3)] hover:text-[var(--text-1)] px-4 py-2.5 rounded-xl cursor-pointer font-medium transition-colors duration-150">
+            Cancel
+          </button>
+          <button
+            @click="save"
+            :disabled="saving"
+            class="bg-[#E8521A] text-white px-5 py-2.5 rounded-xl hover:bg-[#D44818] disabled:opacity-40 cursor-pointer font-semibold shadow-lg shadow-[#E8521A]/15 transition-all duration-200"
+          >
+            Save
+          </button>
+        </div>
+
+        <!-- Danger Zone -->
+        <div class="mt-8 pt-6 border-t border-[var(--modal-border)]">
+          <p class="text-[11px] font-bold text-[var(--text-4)] uppercase tracking-[0.1em] mb-3">Danger Zone</p>
+          <button
+            @click="openDeleteConfirm"
+            class="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500/10 hover:border-red-500/40 cursor-pointer transition-all duration-150 text-sm font-medium"
+          >
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+            </svg>
+            Delete Account
+          </button>
+        </div>
+        </template>
+
+        <!-- Password Tab -->
+        <template v-if="activeTab === 'password'">
           <label class="text-[11px] font-bold text-[var(--text-4)] uppercase tracking-[0.1em] mb-2 block">Change Password</label>
-          <div class="space-y-2.5 mb-6">
+          <div class="space-y-2.5">
             <input
               v-model="currentPassword"
               type="password"
@@ -519,39 +570,12 @@ async function save() {
               type="button"
               @click="handleChangePassword"
               :disabled="passwordSaving || !currentPassword || !newPassword || !confirmPassword"
-              class="bg-[var(--surface-3)] text-[var(--text-1)] text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-[var(--surface-border)] transition-all duration-150 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              class="bg-[#E8521A] text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#D44818] transition-all duration-150 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-[#E8521A]/15"
             >
               {{ passwordSaving ? 'Updating…' : 'Update password' }}
             </button>
           </div>
         </template>
-
-        <!-- Actions -->
-        <div class="flex justify-end gap-3">
-          <button @click="emit('close')" class="text-[var(--text-3)] hover:text-[var(--text-1)] px-4 py-2.5 rounded-xl cursor-pointer font-medium transition-colors duration-150">
-            Cancel
-          </button>
-          <button
-            @click="save"
-            :disabled="saving"
-            class="bg-[#E8521A] text-white px-5 py-2.5 rounded-xl hover:bg-[#D44818] disabled:opacity-40 cursor-pointer font-semibold shadow-lg shadow-[#E8521A]/15 transition-all duration-200"
-          >
-            Save
-          </button>
-        </div>
-
-        <!-- Danger Zone -->
-        <div class="mt-8 pt-6 border-t border-[var(--modal-border)]">
-          <p class="text-[11px] font-bold text-[var(--text-4)] uppercase tracking-[0.1em] mb-3">Danger Zone</p>
-          <button
-            @click="openDeleteConfirm"
-            class="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500/10 hover:border-red-500/40 cursor-pointer transition-all duration-150 text-sm font-medium"
-          >
-            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-            </svg>
-            Delete Account
-          </button>
         </div>
       </div>
     </div>

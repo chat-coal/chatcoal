@@ -12,7 +12,7 @@ import { useTypingStore } from '@/stores/typing'
 import { useSearchStore } from '@/stores/search'
 import api from '@/services/api.service'
 import { getAvatarColor, getDefaultAvatarStyle } from '@/utils/avatar'
-import { joinChannel, leaveChannel, setMuted, setDeafened } from '@/services/voice.service'
+import { joinChannel, leaveChannel, setMuted, setDeafened, startScreenShare, stopScreenShare, getScreenShareStream, getRemoteScreenShareStream } from '@/services/voice.service'
 import { on } from '@/services/websocket.service'
 import { usePushToTalk } from '@/composables/usePushToTalk'
 import MessageItem from './MessageItem.vue'
@@ -74,6 +74,17 @@ const isDMMode = computed(() => {
   return dmsStore.currentDMChannel != null
 })
 
+const memberMap = computed(() => {
+  const map = new Map()
+  const source = isDMMode.value ? dmMembers.value : members.value
+  for (const m of source) {
+    const user = m.user || m
+    const id = String(m.user_id || user.id)
+    if (id) map.set(id, user)
+  }
+  return map
+})
+
 const isAudioChannel = computed(
   () => !isDMMode.value && channelsStore.currentChannel?.type === 'audio',
 )
@@ -107,6 +118,13 @@ const dmOtherUser = computed(() => {
   if (!isDMMode.value || !dmsStore.currentDMChannel || !authStore.dbUser) return null
   const dm = dmsStore.currentDMChannel
   return dm.user1?.id === authStore.dbUser.id ? dm.user2 : dm.user1
+})
+
+// In DM mode, only the other user should be mentionable
+const dmMembers = computed(() => {
+  const other = dmOtherUser.value
+  if (!other) return []
+  return [{ user_id: other.id, user: other }]
 })
 
 const headerTitle = computed(() => {
@@ -212,6 +230,62 @@ function handleLeaveVoice() {
   headerTooltip.value.visible = false
   leaveChannel()
 }
+
+const screenShareVideo = ref(null)
+
+function handleToggleScreenShare() {
+  if (voiceStore.isScreenSharing) {
+    stopScreenShare()
+  } else {
+    startScreenShare()
+  }
+}
+
+// Attach screen share stream to video element when it appears
+function attachScreenShareStream() {
+  const videoEl = screenShareVideo.value
+  const userId = voiceStore.screenShareUserId
+  if (!videoEl || !userId) return
+
+  // Local screen share (our own)
+  if (String(userId) === String(authStore.dbUser?.id)) {
+    const stream = getScreenShareStream()
+    if (stream) {
+      videoEl.srcObject = stream
+      return
+    }
+  }
+
+  // Remote screen share (LiveKit)
+  const remoteStream = getRemoteScreenShareStream()
+  if (remoteStream) {
+    videoEl.srcObject = remoteStream
+    return
+  }
+
+  // Stream not ready yet — poll briefly for it (LiveKit track may arrive after WS event)
+  let attempts = 0
+  const interval = setInterval(() => {
+    attempts++
+    const stream = getRemoteScreenShareStream()
+    const el = screenShareVideo.value
+    if (stream && el) {
+      el.srcObject = stream
+      clearInterval(interval)
+    } else if (attempts > 20 || !voiceStore.screenShareUserId) {
+      clearInterval(interval)
+    }
+  }, 200)
+}
+
+watch(
+  () => voiceStore.screenShareUserId,
+  async (userId) => {
+    if (!userId) return
+    await nextTick()
+    attachScreenShareStream()
+  },
+)
 
 function handleToggleMute() {
   voiceStore.toggleMute()
@@ -503,6 +577,28 @@ onMounted(scrollToBottom)
           </span>
         </div>
 
+        <!-- Screen share video -->
+        <div v-if="voiceStore.screenShareUserId && isInThisChannel" class="mb-6 w-full max-w-3xl mx-auto">
+          <div class="relative bg-black rounded-xl overflow-hidden shadow-2xl">
+            <video
+              ref="screenShareVideo"
+              id="screen-share-video"
+              autoplay
+              playsinline
+              muted
+              class="w-full max-h-[60vh] object-contain"
+            ></video>
+            <div class="absolute top-3 left-3 flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-lg px-3 py-1.5">
+              <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+              <span class="text-white text-xs font-medium">
+                {{ String(voiceStore.screenShareUserId) === String(authStore.dbUser?.id)
+                  ? 'You are sharing your screen'
+                  : `${getMember(voiceStore.screenShareUserId)?.display_name || 'Someone'} is sharing` }}
+              </span>
+            </div>
+          </div>
+        </div>
+
         <!-- Connected users list -->
         <div v-if="connectedUsers.length > 0" class="mb-8">
           <div class="flex flex-wrap justify-center gap-4">
@@ -555,6 +651,26 @@ onMounted(scrollToBottom)
               </svg>
               <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
                 <path d="M4 14v-3c0 -1.953 .7 -3.742 1.862 -5.13m2.182 -1.825a8 8 0 0 1 11.956 6.955v3" /><path d="M18 19c0 1.657 -2.686 3 -6 3" /><path d="M4 14a2 2 0 0 1 2 -2h1a2 2 0 0 1 2 2v3a2 2 0 0 1 -2 2h-1a2 2 0 0 1 -2 -2v-3" /><path d="M16.169 12.18c.253 -.115 .534 -.18 .831 -.18h1a2 2 0 0 1 2 2v2m-1.183 2.826c-.25 .112 -.526 .174 -.817 .174h-1a2 2 0 0 1 -2 -2v-2" /><path d="M3 3l18 18" />
+              </svg>
+            </button>
+
+            <button
+              @click="handleToggleScreenShare"
+              @mouseenter="showHeaderTooltip($event, !voiceStore.isScreenSharing && voiceStore.screenShareUserId ? 'Someone is already sharing' : voiceStore.isScreenSharing ? 'Stop Sharing' : 'Share Screen')"
+              @mouseleave="hideHeaderTooltip"
+              class="w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200"
+              :class="[
+                !voiceStore.isScreenSharing && voiceStore.screenShareUserId
+                  ? 'opacity-40 cursor-not-allowed bg-[var(--surface-3)] text-[var(--text-1)]'
+                  : voiceStore.isScreenSharing
+                    ? 'bg-[#E8521A] hover:bg-[#D44818] shadow-lg shadow-[#E8521A]/20 text-white cursor-pointer'
+                    : 'bg-[var(--surface-3)] hover:bg-[var(--surface-border)] text-[var(--text-1)] cursor-pointer'
+              ]"
+              :disabled="!voiceStore.isScreenSharing && !!voiceStore.screenShareUserId"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                <path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5Z" />
+                <path d="M8 21h8" /><path d="M12 17v4" />
               </svg>
             </button>
 
@@ -643,6 +759,7 @@ onMounted(scrollToBottom)
                     :pinned-message-ids="pinnedMessageIds"
                     :selecting="selecting"
                     :selected="selectedIds.has(message.id)"
+                    :member-map="memberMap"
                     @reply="handleReply"
                     @scroll-to-message="scrollToMessage"
                     @pin="handlePin"
@@ -747,6 +864,7 @@ onMounted(scrollToBottom)
             v-if="hasActiveChannel && !selecting"
             :mode="isDMMode ? 'dm' : 'server'"
             :replying-to="messagesStore.replyingTo"
+            :members="isDMMode ? dmMembers : members"
             @cancel-reply="handleCancelReply"
           />
         </div>

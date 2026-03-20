@@ -169,6 +169,8 @@ async function startDM() {
         <!-- Profile info -->
         <div class="pt-8 pb-4 px-4">
           <h3 class="text-[var(--text-1)] font-bold text-base truncate">{{ profile.display_name }}</h3>
+          <p v-if="profile.is_anonymous" class="text-[var(--text-4)] text-[13px] italic">Anonymous</p>
+          <p v-else-if="profile.username" class="text-[var(--text-3)] text-[13px]">@{{ profile.username }}</p>
           <p v-if="profile.home_instance" class="text-[var(--text-4)] text-[11px] mb-1">@{{ profile.home_instance }}</p>
           <p class="text-[var(--text-4)] text-xs mb-3">
             {{ profile.status === 'online' ? 'Online' : 'Offline' }}
